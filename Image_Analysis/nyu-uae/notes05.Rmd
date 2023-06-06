@@ -1,0 +1,93 @@
+---
+title: "Notes 5: Working with Text"
+output: html_document
+---
+```{r}
+install.packages("cleanNLP")
+```
+
+
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+library(cleanNLP)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+# Text captions
+
+Once again, we will look at our posters dataset. Here, though, for the sake of making sure that
+this runs on machines with limited memory, we will look at a subset of the data with only 1000 
+of the posters.
+
+```{r, message=FALSE}
+posters <- read_csv(file.path("data", "movie-posters-1000.csv"))
+```
+
+One column of the data that we have not looked at is called "summary". It contains a description
+of the plot of each film. Here, for example, is the summary of the movie *Jurrasic Park*:
+
+```{r}
+posters$summary[10]
+```
+
+As with our image dataset, we want to find features from the text that describes each row of the dataset. 
+To do this, we make use of the **cleanNLP** package. When given a dataset of text, it supplies a new dataset
+with one row per token in the original text:
+
+```{r}
+
+cnlp_init_stringi()
+
+anno <- cnlp_annotate(posters$summary, verbose=FALSE)$token
+anno
+```
+
+We can compute a TF-IDF matrix from the dataset and the calculate a matrix of cosine similarity scores:
+
+```{r}
+X <- as.matrix(cnlp_utils_tfidf(anno, min_df = 0.01, max_df = 0.5))
+vocab <- colnames(X)
+
+X <- t(scale(t(X))) / sqrt(ncol(X) - 1)
+Z <- tcrossprod(X)
+```
+
+Here are the scores between the first 10 movies and each other:
+
+```{r}
+Z[1:10,1:10]
+```
+
+To summarize this, we can finally compute the nearest 15 poster captions that are most similar to a given
+textual captions:
+
+```{r}
+nearest_img <- t(apply(Z, 2, function(v) order(v, decreasing = TRUE)[seq(1, 15)]))
+```
+
+Finally, we can put this back together with the image data to "see" the posters that have the most similar
+captions to a given image (note: The first image in the upper-left is the original poster used):
+
+```{r}
+start_poster <- 2
+show_image(file.path("images", "movie-posters", posters$path[nearest_img[start_poster,]]), ncol=5)
+```
+
+What word(s) seemed to pop up as the most important in this example? Try to use different starting posters
+and see what happens.
+
+To better understand what is happening here, it may be useful to look at the top words according to TF-IDF:
+
+```{r}
+tfidf <- as.matrix(cnlp_utils_tfidf(anno, min_df = 0, max_df = 1))
+
+top_words <- apply(tfidf, 1, function(v) paste(names(sort(v, decreasing=TRUE)[1:5]), collapse=" "))
+cbind(stri_sub(posters$title, 1, 25), top_words)
+```

@@ -1,0 +1,163 @@
+---
+title: "Notes 9: Application (Wikiart)"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+library(cleanNLP)
+library(igraph)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+# Data and EDA
+
+As a final case-study, we can look at a collection of paintings from WikiArt:
+
+```{r, message=FALSE}
+wiki <- read_csv(file.path("data", "wikiart.csv"))
+wiki
+```
+
+We have included paintings from three people. Each is also tagged with a "genre" code, which we can
+explore here:
+
+```{r, message=FALSE}
+ggplot(wiki, aes(genre)) +
+  geom_bar(aes(fill = artist)) +
+  coord_flip() +
+  scale_fill_viridis_d()
+```
+
+Do the results here match your prior understanding (if any) of these artists?
+
+# Color analysis
+
+Using color analysis seems particularly appropriate when looking at paintings. Lets see
+some of the most blue:
+
+```{r}
+show_image(file.path("images", "wikiart", top_n(wiki, avg_blue, n=15)$path), ncol=5)
+```
+
+
+```{r, message=FALSE}
+ggplot(wiki, aes(artist, avg_blue)) +
+  stat_summary(fun.data=mean_cl_boot)
+```
+
+And most red images:
+
+```{r}
+show_image(file.path("images", "wikiart", top_n(wiki, avg_red, n=15)$path), ncol=5)
+```
+
+Also, feel free to try some other colors as well as the value and saturation. We can even
+look at an analysis of the colors by artist, as we did with the posters:
+
+```{r, message=FALSE}
+ggplot(wiki, aes(artist, avg_red)) +
+  stat_summary(fun.data=mean_cl_boot)
+```
+
+Try a different color and see what happens!
+
+```{r}
+show_image(file.path("images", "wikiart", top_n(wiki, avg_green, n=15)$path), ncol=5)
+```
+
+
+
+```{r, message=FALSE}
+ggplot(wiki, aes(artist, avg_green)) +
+  stat_summary(fun.data=mean_cl_boot)
+```
+
+```{r}
+show_image(file.path("images", "wikiart", top_n(wiki, avg_yellow, n=15)$path), ncol=5)
+```
+
+```{r, message=FALSE}
+ggplot(wiki, aes(artist, avg_yellow)) +
+  stat_summary(fun.data=mean_cl_boot)
+```
+```{r}
+show_image(file.path("images", "wikiart", top_n(wiki, avg_violet, n=15)$path), ncol=5)
+```
+
+
+```{r, message=FALSE}
+ggplot(wiki, aes(artist, avg_violet)) +
+  stat_summary(fun.data=mean_cl_boot)
+```
+
+# Neural networks
+
+We will also use neural networks. However, keep in mind that these are all trained on photographs.
+It is not instantly clear that they can be directly applied to paintings.
+
+```{r, message=FALSE}
+resnet <- read_csv(file.path("models", "wikiart-resnet50.csv"))
+resnet
+```
+
+What are some of the most common objects:
+
+```{r}
+filter(resnet, rank == 1) %>%
+  count(class_description, sort=TRUE)
+```
+
+As with the other collections, the most common ones seem like mistakes, but there are
+some objects that may actually be present in the dataset. For example, the "lakeside"
+category:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "lakeside")
+show_image(file.path("images", "wikiart", resnet$path[index]), ncol=5)
+```
+
+And hoopskirts (more-or-less):
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "hoopskirt")
+show_image(file.path("images", "wikiart", resnet$path[index]), ncol=3)
+```
+
+Not all of the objects work as expected, however. The category of "groom" gives
+particularly bad and confusing results:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "groom")
+show_image(file.path("images", "wikiart", resnet$path[index]), ncol=5)
+```
+
+While the object detection does not work quite as well on paintings, the image embedding algorithm
+performs quite well. 
+
+```{r}
+embed <- read_rds(file.path("models", "wikiart-pool.rds"))
+dist_mat <- as.matrix(dist(embed))
+nearest_img <- t(apply(dist_mat, 2, function(v) order(v)[seq(1, 15)]))
+```
+
+Start with, for example, image 2:
+
+```{r}
+start_img <- 411
+show_image(file.path("images", "wikiart", wiki$path[nearest_img[start_img,]]), ncol=5)
+```
+```{r}
+start_img <- 411
+print(file.path("images", "wikiart", wiki$path[nearest_img[start_img,]]))
+```
+
+
+Try using other starting images and see what happens. Does it make sensible suggestions? What
+aspects of the paintings are most commonly used to find similar images?

@@ -1,0 +1,278 @@
+---
+title: "Notes 1: Introduction to R and Digital Images"
+output: html_document
+---
+
+# Introduction to R and RMarkdown
+
+If you are reading this file, you have probably already installed R and RStudio
+correctly (yay!). This document is called an R markdown notebook. It allows you to
+write both prose and code within the same file. The prose is written in the area
+with a white background, which you should see here. It is possible to use all of
+the standard markdown formatting while writing. These include *italics* and **bold**
+text, as well as [links](https://yourwebsite.com). There are also code blocks, that
+show up in a grey background, such as the one here:
+
+```{r}
+print("Welcome!")
+```
+
+You can create a new code block by clicking on the "Insert" button above, or by coping
+a block from one place to another. In order to execute the code, tap on the green play
+button in the upper right corner of the code block. Doing this above now and you will
+see that R prints out the welcome message below the code block. There is a way of 
+running all of the code in a notebook and creating an HTML or PDF file. We will show this
+at the end of this document.
+
+Want to take notes? Feel free! You can write them directly in this file. 
+It won't change the code. Unlike many programs though, RStudio will not 
+automatically save your changes. So make sure to "save" by clicking the disc logo. 
+
+
+# Setting up RStudio
+
+Before we do anything else, it is helpful to change some of the default settings in
+RStudio. Open the "Preferences" window (Tools > Options on Windows and RStudio > Preferences
+on a mac). Then make the following changes in the General window:
+
+- Uncheck all three checkboxes that start with "Restore..."
+- Find the prompt "Save workspace to .RData" and set it to "Never"
+- Unselect the "Always save history"
+
+Then, in the Code menu, unselect:
+
+- Insert matching parens/quotes
+
+We find that these choices help to recover from errors and make using R easier for new users.
+
+# R Basics
+
+This workshop is not intended to offer a complete introduction to R. It will be useful, however,
+to understand some basic methods for using the language and how it works. As perhaps its most
+straightforward use, R can be used as a simple calculator. Test this by using the code below:
+
+```{r}
+100 + 5
+```
+
+We can also save results as *variables* by using an arrow (<-) and making a variable name. Running
+the variable on its own returns the result again:
+
+```{r}
+result <- 100 + 5
+result
+```
+ 
+After you run the above block of code, you should see the variable `result` in the upper right hand
+corner of RStudio, along with its value (105). 
+
+The top right window is showing us which variables (and the values assigned to them) that we have 
+created as well as keeping track of what we have done. This can be very helpful when things get complex!
+
+R can also work with more complex objects. This will be very important for us as we will be working with  collections of numbers in order to do image analysis. To the computer, the image is just a series of numbers, which we will come back to. 
+
+As a result, knowing how numbers are stored and manipulated in R is key. 
+One common type is called a vector, which is a collection of individual values. 
+You can create these by using the `c` function and seperating values by a comma:
+
+```{r}
+result <- c(1, 2, 3, 10, 100)
+result
+```
+
+Notice that the value of `result` has been changed in the window in the upper right hand side of RStudio.
+It is possible to apply mathematical operations on all of the values in a vector at once, like this:
+
+```{r}
+result + 1
+```
+
+R decides that you wanted to add 1 to *each* element of the vector. You can also do mathematical operations between vectors of the same length, like this:
+
+```{r}
+result + result
+```
+
+Above, R lines up each element of result, and adds it to itself. There are also numerous functions available in R. These take one or more inputs and return a result. For example, the `sum` function takes a vector and returns a single number given the sum of the elements in the vector:
+
+```{r}
+sum(result)
+```
+
+Finally, it is also possible to save other types of values other than numbers. For example, we might have captions for our images. So, we can also save strings:
+
+```{r}
+mystring <- "Hello there!"
+```
+
+As with numbers, we can create vectors of strings:
+
+```{r}
+mystring <- c("Hello there!", "Hello again!")
+```
+
+We are not able to do all of the same things with strings that we can do with numbers though. For example,
+we cannot add 1 to a vector of strings:
+
+```{r, eval=FALSE}
+mystring + 1
+```
+
+However, we can paste together the elements of a vector of strings using the `paste` function:
+
+```{r}
+paste(mystring, collapse=" ")
+```
+
+Hopefully these operations will help to demystify some of the R code you will be seeing.
+
+# Packages
+
+We are going to pause right after loading these libraries. 
+
+While the default version of R provides many helpful functions for working with data, much
+of the power of R comes from user-contributed code that provides specific implementations of
+more advanced and specialized operations. We are going to use several of these in the following
+notes, and it is easiest to install of the needed packages before getting started. A package
+only needs to be installed once. The following code checks whether you have each of the listed
+packages and if not, installs it for you. If you have not installed the packages, it could take
+several minutes for this to finish running.
+
+```{r, message=FALSE}
+if (!require("readr"))     install.packages("readr",     repos = "https://cran.rstudio.com/")
+if (!require("dplyr"))     install.packages("dplyr",     repos = "https://cran.rstudio.com/")
+if (!require("ggplot2"))   install.packages("ggplot2",   repos = "https://cran.rstudio.com/")
+if (!require("maps"))      install.packages("maps",      repos = "https://cran.rstudio.com/")
+if (!require("mapproj"))   install.packages("mapproj",   repos = "https://cran.rstudio.com/")
+if (!require("cleanNLP"))  install.packages("cleanNLP",  repos = "https://cran.rstudio.com/")
+if (!require("stringi"))   install.packages("stringi",   repos = "https://cran.rstudio.com/")
+if (!require("forcats"))   install.packages("forcats",   repos = "https://cran.rstudio.com/")
+if (!require("ggplot2"))   install.packages("ggplot2",   repos = "https://cran.rstudio.com/")
+if (!require("Hmisc"))     install.packages("Hmisc",     repos = "https://cran.rstudio.com/")
+if (!require("igraph"))    install.packages("igraph",    repos = "https://cran.rstudio.com/")
+if (!require("tidyr"))     install.packages("tidyr",     repos = "https://cran.rstudio.com/")
+if (!require("gridExtra")) install.packages("gridExtra", repos = "https://cran.rstudio.com/")
+if (!require("DescTools")) install.packages("DescTools", repos = "https://cran.rstudio.com/")
+if (!require("hexbin"))    install.packages("hexbin",    repos = "https://cran.rstudio.com/")
+```
+
+Once that code works for you (because of the safe guards, you can re-run the block safely to 
+make sure everything is working), you should be ready to go. Although you only need to install
+a package once, you will need to load each package once every session in which you need it.
+To load a package, we use the `library` function. We will also load a set of custom functions
+that we have written for you by using the `source` function:
+
+```{r}
+library(readr)
+library(dplyr)
+
+source("scripts/funs.R")
+```
+
+readr: reading rectangular data (i.e. csv) | https://readr.tidyverse.org/
+dplyr: storing and manipulating data | https://dplyr.tidyverse.org/
+For more on the tidy verse, visit https://www.tidyverse.org/
+
+Now we are ready to look at some image data.
+
+# Reading tables and showing images
+
+For the next few notebooks we are going to look at a dataset of movie posters. 
+Why might movie posters be interesting to study?
+Which features about the images might we be interested in studying?
+Which kind information would we need to address these questions/topics?
+
+In order to do this, we will need to load two kinds of data into R: a CSV and jpegs.
+
+What is a CSV? Let's take a look by finding the file in "nyu-uae". What we will see is that metadata about the collection is stored in a file called "movie-posters.csv" inside of the directory called "data".
+
+What is a jpeg? They are the file type for representing images. We will get into more detail shortly.
+
+To read the dataset into R, we use the `read_csv` function (we use the `file.path` function to put
+the directory and filename together in a way that will work across platforms):
+
+```{r}
+posters <- read_csv(file.path("data", "movie-posters.csv"))
+```
+
+You should see some red and green after we run this code. While you may think that red is bad,
+it is not! This is just R saying that you have read in your dataset without any problems. You should
+notice that the variable `posters` is now in your environment. It is neither a single value nor a vector.
+It is, rather, a table of values, with one row per more poster and one column for each variable that
+describes a movie. Here are the first few rows of the dataset:
+
+```{r}
+head(posters)
+```
+
+You can click on the arrow in the output to see the other columns. Can you figure out what each of the columns represents? 
+
+It is also possible to look at the dataset by clicking on "posters" in the name of the variable
+in the Environment panel. (You'll notice that RStudio processed the proper code in the console.)
+
+Can you tell now the scope of this data?
+
+In our programming going forward, it will be useful to grab a single column of our dataset. To do this, we can write the name of the dataset followed by a dollar sign and the name of the column that we want to access.
+
+Here are the poster ratings from IMDb:
+
+```{r}
+posters$rating
+```
+
+We can further select a specific row using a square bracket giving the row number. Here is the name
+of the 100th film:
+
+```{r}
+posters$title[100]
+```
+
+Or, we can select a collection of specific titles. Here, the 1st, 100th, and 1000th:
+
+```{r}
+posters$title[c(1, 100, 1000)]
+```
+
+There is even a short-hand for selecting a group of values. Put the start and end rows between a colon.
+Here we get titles 100 through 120:
+
+```{r}
+posters$title[100:120]
+```
+
+One important column in our dataset is a variable called `path`. It describes the name of the image file that corresponds to the metadata:
+
+```{r}
+posters$path[1]
+```
+
+We can use the `file.path` function again to build a full path to the image:
+
+```{r}
+file.path("images", "movie-posters", posters$path[1])
+```
+
+An then, passing this to the function `show_image` will display the image in R:
+
+```{r}
+show_image(file.path("images", "movie-posters", posters$path[1]))
+```
+
+We can even show a collection of movie posters by passing a vector of paths to `show_image`
+and specifying how many columns should be used in the grid:
+
+```{r}
+show_image(file.path("images", "movie-posters", posters$path[1001:1015]), ncol=5)
+```
+
+Now you try! 
+1. Create a new line of R code below. Run it. Do you see the same thing? 
+2. Try editing the choice of rows and see more examples of posters included in the collection (but
+be careful to not look at too many or you may crash R!).
+
+```{r}
+show_image(file.path("images","movie-posters", posters$path[4001:4020]), ncol=5)
+posters$title[4001:4020]
+posters$rating[4001:4020]
+```
+

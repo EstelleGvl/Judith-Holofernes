@@ -1,0 +1,197 @@
+---
+title: "Notes 7: Application (FSA-OWI - Color)"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+library(cleanNLP)
+library(igraph)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+# Data and EDA
+
+This notebook is a way for you to apply the techniques from the previous notebooks to new
+datasets. This notebook includes data about the color photographs from the FSA-OWI archive.
+You can read in the dataset and see what metadata are available:
+
+```{r, message=FALSE}
+fsa <- read_csv(file.path("data", "fsa-color.csv"))
+fsa
+```
+
+Notice that, in the interest of time, we have already put in the color information about the dataset
+in the datafile.
+
+We can start by seeing the distribution of years:
+
+```{r, warning=FALSE}
+ggplot(fsa, aes(year)) +
+  geom_bar()
+```
+
+And photographers in the dataset:
+
+```{r, message=FALSE}
+filter(fsa, !is.na(photographer_name)) %>%
+  ggplot(aes(photographer_name)) +
+    geom_bar() +
+    coord_flip()
+```
+
+# Mapping
+
+The FSA-OWI collection includes information about the location of each photograph as a latitude and longitude.
+We can plot these as a scatter plot to get a type of map:
+
+```{r}
+filter(fsa, !is.na(longitude)) %>%
+  ggplot(aes(longitude, latitude)) +
+    geom_point()
+```
+
+Let's use a mapping package to build a better map of the U.S.:
+
+```{r, warning=FALSE}
+library(maps)
+library(mapproj)
+
+us <- map_data("state")
+
+filter(fsa, !is.na(longitude), !is.na(year)) %>%
+  ggplot(aes(longitude, latitude)) +
+    geom_map(data=us, map=us,
+             aes(x=long, y=lat, map_id=region, fill=region),
+             alpha=0.5, show.legend=FALSE) +
+      geom_point(aes(color = factor(year))) +
+      coord_map() +
+      scale_fill_grey() +
+      scale_color_viridis_d() +
+      labs(color="Year") +
+      theme_void()
+```
+
+This is a bit outside of our visual analysis, but a good example how the power that comes from using
+a general purpose programing tool rather than a specific GUI for one type of analysis.
+
+# Color analysis
+
+We already have the color information included in the dataset. Here are the most blue images
+in the collection (note that the images are much larger and this will take longer to run than
+with the poster example):
+
+```{r}
+show_image(file.path("images", "fsa-color", top_n(fsa, avg_blue, n=15)$path), ncol=5)
+```
+
+Try some other colors, as well as the saturation and value. How well do the colors describe the
+images?
+
+# Text analysis
+
+Each photograph also includes a short caption. These are much shorter than the poster text descriptions,
+but are still interesting to look at. Let's extract the words from the captions using cleanNLP again:
+
+```{r}
+cnlp_init_stringi()
+
+anno <- cnlp_annotate(fsa$caption, verbose=FALSE)$token
+anno
+```
+
+As before, we will determine which images are closest to one-another using the TF-IDF matrix:
+
+```{r}
+X <- as.matrix(cnlp_utils_tfidf(anno, min_df = 0.01, max_df = 0.5))
+vocab <- colnames(X)
+X <- t(scale(t(X))) / sqrt(ncol(X) - 1)
+Z <- tcrossprod(X)
+nearest_img <- t(apply(Z, 2, function(v) order(v, decreasing = TRUE)[seq(1, 15)]))
+```
+
+And look at some examples:
+
+```{r}
+start_img <- 2
+show_image(file.path("images", "fsa-color", fsa$path[nearest_img[start_img,]]), ncol=5)
+```
+
+Try out several numbers. How does the distance metric function here? Does it seem similar to the
+results we had from the movie posters?
+
+# Neural networks
+
+Finally, let's also use the ResNet-50 neural network model. The structure is exactly the same as
+before:
+
+```{r, message=FALSE}
+resnet <- read_csv(file.path("models", "fsa-color-resnet50.csv"))
+resnet
+```
+
+What are the most common objects?
+
+```{r}
+filter(resnet, rank == 1) %>%
+  count(class_description, sort=TRUE)
+```
+
+There are still some generic ones that are not capturing real objects (for example, televisions
+would be rare in the early 1940s). But, some classes are actually detecting objects that are 
+common in the collection. For example, cowboy hats (though some are other hat types):
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "cowboy_hat")
+show_image(file.path("images", "fsa-color", resnet$path[index]), ncol=5)
+```
+
+Military uniforms:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "military_uniform")
+show_image(file.path("images", "fsa-color", resnet$path[index]), ncol=5)
+```
+
+Lab coats yields some interesting, if not always correct, results:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "lab_coat")
+show_image(file.path("images", "fsa-color", resnet$path[index]), ncol=4)
+```
+
+As do images marked as "corn":
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "corn")
+show_image(file.path("images", "fsa-color", resnet$path[index]), ncol=5)
+```
+
+As with the poster data, we can also try to look at an image embedding:
+
+```{r}
+embed <- read_rds(file.path("models", "fsa-color-pool.rds"))
+dim(embed)
+```
+
+And compute distances based on the embedding:
+
+```{r}
+dist_mat <- as.matrix(dist(embed))
+nearest_img <- t(apply(dist_mat, 2, function(v) order(v)[seq(1, 15)]))
+```
+
+Now, let's see the nearest images for a particular starting point:
+
+```{r}
+start_img <- 25
+show_image(file.path("images", "fsa-color", fsa$path[nearest_img[start_img,]]), ncol=5)
+```
+
+Try to pick some other starting images. How does this compare to the results from the posters?

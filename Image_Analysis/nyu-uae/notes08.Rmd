@@ -1,0 +1,150 @@
+---
+title: "Notes 8: Application (FSA-OWI Black and White)"
+output: html_document
+---
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+library(cleanNLP)
+library(igraph)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+# Data and EDA
+
+This notebook is a way to apply the techniques from the previous notebooks to new
+datasets. This notebook includes data about the black and white photographs from the FSA-OWI
+archive. You can read in the dataset and see what metadata are available:
+
+```{r, message=FALSE}
+fsa <- read_csv(file.path("data", "fsa-bw.csv"))
+fsa
+```
+
+There are 170 thousand digitized images in the collection. Here, we are using only a sample to
+make it easier to run on our own machines. The range of years in the black and white datset is
+longer than the color FSA-OWI collection:
+
+```{r, message=FALSE}
+ggplot(fsa, aes(year)) +
+  geom_bar()
+```
+
+As are the number of photographers:
+
+```{r, message=FALSE}
+filter(fsa, !is.na(photographer)) %>%
+  ggplot(aes(photographer)) +
+    geom_bar() +
+    coord_flip()
+```
+
+# Value analysis
+
+We do not have useful information about hue because all of the images are black and white. However,
+we can look at the average value (lightness to darkness) of the images. Here are the highest and lowester images based on their value:
+
+```{r}
+show_image(file.path("images", "fsa-bw", top_n(fsa, avg_value, n=15)$path), ncol=5)
+```
+
+```{r}
+show_image(file.path("images", "fsa-bw", top_n(fsa, avg_value, n=-15)$path), ncol=5)
+```
+
+Are these the kinds of images you would expect to have a low and high value? Hopefully! Notice that
+we have actually snuck a few color images into the dataset; it is interesting to see how these
+relate to the black and white.
+
+# Text analysis
+
+The black and white images also have captions. Let's do some text analysis again:
+
+```{r}
+cnlp_init_stringi()
+
+anno <- cnlp_annotate(fsa$title, verbose=FALSE)$token
+anno
+```
+
+And compute nearest images:
+
+```{r}
+X <- as.matrix(cnlp_utils_tfidf(anno, min_df = 0.01, max_df = 0.5))
+vocab <- colnames(X)
+X <- t(scale(t(X))) / sqrt(ncol(X) - 1)
+Z <- tcrossprod(X)
+nearest_img <- t(apply(Z, 2, function(v) order(v, decreasing = TRUE)[seq(1, 15)]))
+```
+
+And see what the algorithm comes up with:
+
+```{r}
+start_img <- 1
+show_image(file.path("images", "fsa-bw", fsa$path[nearest_img[start_img,]]), ncol=5)
+```
+
+As before, try different starting images and see how the results work. 
+
+# Neural networks
+
+Finally, let's see how neural networks behave with black and white images (all of the algorithms are
+trained on color inputs):
+
+```{r, message=FALSE}
+resnet <- read_csv(file.path("models", "fsa-bw-resnet50.csv"))
+resnet
+```
+
+What types of objects are detected?
+
+```{r}
+filter(resnet, rank == 1) %>%
+  count(class_description, sort=TRUE)
+```
+
+All considered, many these actually seem reasonable. Let's look at some of the images:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "plow")
+show_image(file.path("images", "fsa-bw", resnet$path[index]), ncol=6)
+```
+
+Military uniforms also work well:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "military_uniform")
+show_image(file.path("images", "fsa-bw", resnet$path[index]), ncol=5)
+```
+
+I was surprised to see so many zebras in the dataset. What is going on here?
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "zebra")
+show_image(file.path("images", "fsa-bw", resnet$path[index]), ncol=3)
+```
+
+And again, the embedding trick can be applied with black and white images: 
+
+```{r}
+embed <- read_rds(file.path("models", "fsa-bw-pool.rds"))
+dist_mat <- as.matrix(dist(embed))
+nearest_img <- t(apply(dist_mat, 2, function(v) order(v)[seq(1, 15)]))
+```
+
+How does the nearest neighbors algorithm work with these?
+
+```{r}
+start_img <- 2
+show_image(file.path("images", "fsa-bw", fsa$path[nearest_img[start_img,]]), ncol=5)
+```
+
+The sample starting point of number 2, at least, works very well. Try some different starting points
+and see how the algorithms behaves.
+

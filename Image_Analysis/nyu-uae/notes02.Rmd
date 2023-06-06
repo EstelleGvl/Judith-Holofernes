@@ -1,0 +1,198 @@
+---
+title: "Notes 2: Creating Graphics and Manipulating Data"
+output: html_document
+---
+
+This is the second notebook of code, and requires that you already followed the instructions in the
+first notebook. We recommend completely closing RStudio and reopening it to make sure that you start
+with a clean R session. Then, start by loading the following packages:
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+It is good practice to put all of the library commands at the start of an R script or notebook.
+
+# Graphics with ggplot2
+
+We are going to make heavy use of data visulizations in these notes. Data visualization is a key
+component of exploratory data analysis (EDA). In order to make data visualizations we will make
+use of the **ggplot2** library. As with R more generally, we have only the time to give a short
+introduction to the library rather than a complete introduction to data visualization. Hopefully
+this will suffice for the workshop and offer inspiration for further study.
+
+We start by reading in the posters dataset once again:
+
+```{r}
+posters <- read_csv(file.path("data", "movie-posters.csv"))
+```
+
+We will start by constructing a plot and then decomposing its elements. Below is the
+code to plot the director's birth year against the year that a movie was released. Each
+row of the dataset is represented by a point in the output.
+
+```{r, warning=FALSE}
+ggplot(posters, aes(director_birth, year)) +
+  geom_point()
+```
+
+The code includes four specific components:
+
+- specifying the dataset that we are using (posters)
+- describing the variable on the x-axis (director_birth)
+- describing the variable on the y-axis (year)
+- describing the type of plot to build, here a scatter plot (geom_point)
+
+These are described by using the functions `ggplot()` and `aes()`. Specifically,
+relations between variables in the dataset to elements of the plot (here, the x and y
+axes), are called *aesthetics*.
+
+We can create similar plots by changing the aesthetics. Here is a plot of rating (x-axis)
+and voted (y-axis):
+
+```{r, warning=FALSE}
+ggplot(posters, aes(rating, votes)) +
+  geom_point()
+```
+
+There are also other kinds of plots that we can build. Consider a scatterplot of genre
+and rating:
+
+```{r}
+ggplot(posters, aes(genre, rating)) +
+  geom_point()
+```
+
+Because there is so much data, it is hard to make sense of this plot. We can change this to a violin
+plot by changing the `geom_` function to better show the distribution of rating within each genre:
+
+```{r}
+ggplot(posters, aes(genre, rating)) +
+  geom_violin()
+```
+
+Or, we can replace the geometry with a `stat_` function to compute statistics based on the data. Here
+are confidence intervals for the mean, showing where we think the average rating of each genre is:
+
+```{r}
+ggplot(posters, aes(genre, rating)) +
+  stat_summary(fun.data=mean_cl_normal)
+```
+
+Notice any interesting patterns? Finally, we can even build plots that do not have an explicit
+y-axis by selecting an appropriate geometry. For example, here is a bar plot showing the number
+of films in each genre:
+
+```{r}
+ggplot(posters, aes(genre)) +
+  geom_bar()
+```
+
+What genre has the most films? Which has the fewest (outside of "other")? 
+
+# Manipulating data
+
+In addition to making plots, it is also important to be able to manipulate our dataset in order to
+create new data elements. To do this we make use of the **dplyr** library. There are a lot of functions in this package, but we will only use a small subset of them.
+
+dplyr: for storing and manipulating data | https://dplyr.tidyverse.org/
+
+One important dplyr function is called `filter`. It takes a dataset and returns a subset of the rows
+for which a particular condition holds. Here, we take the posters dataset and filter rows for which
+the year is equal to 2000:
+
+```{r}
+filter(posters, year == 2000)
+```
+
+Notice that this does not change the original dataset; it simply creates a copy of the selected rows and
+displays them for us. We could have saved the result as a new dataset, if needed.
+
+The entire dataset is a bit large. Let's use another function to count the number of times we see a particular
+director in the dataset:
+
+```{r}
+count(posters, director, sort=TRUE)
+```
+
+Taking a few of the most represented directors in our dataset, we can use the filter function to create
+a new dataset with just a small number of directors:
+
+```{r}
+posters_top_dirs <- filter(posters,
+                           director %in% c("Woody Allen", "Joel Schumacher", "Steven Spielberg", "Clint Eastwood"))
+```
+
+Notice that there should be a new dataset now in your Environment panel. It has only 60 observations and
+will be better able to show some more advanced ploting functions from **ggplot2**.
+
+# More advanced plots
+
+Let's create a plot of year and rating, but this time with our smaller dataset:
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_point()
+```
+
+Each point represents a particular film. What if we want to show who directed each film? Remember
+the concept of an aesthetic that maps a variable to a component of a plot? So far we have only 
+done this with the x and y coordinates, but it is possible to map other elements of the plot to
+variables. These are usually specified with a new call to the `aes` function directly within the
+`geom_` function. Let's associate the color of points with the director of the film:
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_point(aes(color = director))
+```
+
+Notice that R does all of the work of selecting colors, creating a legend, and coloring the
+points. We can change the default set of colors by adding a new layer to the plot. For example,
+let's use the Viridis colors (which are optimized for being seen by people who are color-blind;
+it also helps with bad projectors and when printing in black and white):
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_point(aes(color = director)) +
+  scale_color_viridis_d()
+```
+
+We could also plot these points as lines over time, to show the trajectory of each director.
+This is done by just changing `geom_point` to `geom_line`:
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_line(aes(color = director)) +
+  scale_color_viridis_d()
+```
+
+The magic of ggplot allows us to *layer* elements of a plot by simply adding them together.
+Here, we point the points and lines in the same plot:
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_line(aes(color = director)) +
+  geom_point(aes(color = director)) +
+  scale_color_viridis_d()
+```
+
+Another useful layer type is a `geom_text`, which labels each point with a small
+caption. This requires also specifying an aesthetic called `label`:
+
+```{r}
+ggplot(posters_top_dirs, aes(year, rating)) +
+  geom_text(aes(label = title, color=director))
+```
+
+It is a bit messy here because of the overlaps in the middle of the plot, but generally a useful
+way to see where particular data points are within a plot.
+
+Want to learn more? Check out Wickham's R for DS Chapter 3: https://r4ds.had.co.nz/data-visualisation.html
+
+

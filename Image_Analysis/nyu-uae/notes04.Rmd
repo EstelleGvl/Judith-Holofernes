@@ -1,0 +1,275 @@
+---
+title: "Notes 4: Extracting features at scale"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+# Extracting features at scale
+
+Load the posters dataset into R once again:
+
+```{r, message=FALSE}
+posters <- read_csv(file.path("data", "movie-posters.csv"))
+```
+
+In the last set of notes, we looked at how to look at the individual pixels in an image. This
+time we can cycle through all of the images and extract individual summary values that
+describe features of each image. To start, let's grab the *value* of each image (this is easy
+to compute because it is just the mean of all the pixels). We will cycle through the corpus and
+add this to each row of the dataset.
+
+```{r}
+posters$avg_value <- 0
+for (i in seq_len(nrow(posters)))
+{
+  img <- readJPEG(file.path("images", "movie-posters", posters$path[i]))
+  posters$avg_value[i] <- mean(img)
+}
+```
+
+Make sure that you look at the dataset and understand how we were able to do feature extraction
+on the dataset using the preceeding code.
+
+Now, it is possible to use this new variable just as we would any other. Let's look at the distribution of the average value:
+
+```{r}
+posters %>%
+  ggplot(aes(avg_value)) +
+    geom_histogram(color="black", fill="white", bins=30)
+```
+
+There is a bit of range here, but most movies are neither very dark or very light. Has there
+been a change over time? What patterns do you see from the plot below:
+
+```{r}
+posters %>%
+  ggplot(aes(year, avg_value)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+Are there genre-related trends?
+
+```{r}
+posters %>%
+  ggplot(aes(genre, avg_value)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+Which genre has the darkest posters? The lightest? Do these patterns make sense to you?
+
+# Top images
+
+Just because we have summarized features does not mean that we should stop looking at the original
+images. One way to continue to do this is to look at images that have the highest and lowest amount
+of a particular value. For instance, here are the brightest (highest value) images in the corpus:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_value, n=15)$path), ncol=5)
+```
+
+Do you agree that the code has found particularly bright images? Here, similarly, the darkest:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_value, n=-20)$path), ncol=5)
+```
+
+Does this match your understanding of what the darkest images would look like? Do the examples here
+match well (or not) with the aggregative analysis of genre that we saw previously?
+
+# Saturation
+
+Now, let's do the same thing with the average saturation of each image. Here we will  make use
+of the `rgb2hsv` function because saturation is a bit more complicated than value. We have decided
+to take the average saturation of all pixels that are sufficently bright (value larger than 0.3).
+
+```{r}
+posters$avg_saturation <- 0
+for (i in seq_len(nrow(posters)))
+{
+  img <- readJPEG(file.path("images", "movie-posters", posters$path[i]))
+  hsv <- rgb2hsv(as.numeric(img[,,1]), as.numeric(img[,,2]), as.numeric(img[,,3]), maxColorValue = 1)
+  posters$avg_saturation[i] <- mean(hsv[2,hsv[3,] > 0.3])     
+}
+```
+
+Here is a plot of saturation by genre. What pattern might you expect? How does this match the patterns
+that you see? Can you explain any differences?
+
+```{r}
+posters %>%
+  ggplot(aes(genre, avg_saturation)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+How about saturation over time? Has this changed at all?
+
+```{r}
+posters %>%
+  ggplot(aes(year, avg_saturation)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+And here are the most saturated images:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_saturation, n=15)$path), ncol=5)
+```
+
+And the least saturated images:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_saturation, n=-20)$path), ncol=5)
+```
+
+Does your understanding of saturation match the output here? 
+
+# Hue
+
+We have already seen an analysis of value and saturation. How would this work with hue? The average
+hue is not very useful (why?). Instead let's put each pixels include one of a few buckets: six colors,
+black, grey, and white. We will figure out these cutoffs using a combination of the hue, saturation,
+and value. Then, we will record the average amount of the image that falls within each color.
+
+```{r}
+posters$avg_red    <- 0
+posters$avg_orange <- 0
+posters$avg_yellow <- 0
+posters$avg_green  <- 0
+posters$avg_blue   <- 0
+posters$avg_violet <- 0
+posters$avg_black  <- 0
+posters$avg_grey   <- 0
+posters$avg_white  <- 0
+
+for (i in seq_len(nrow(posters)))
+{
+  img <- readJPEG(file.path("images", "movie-posters", posters$path[i]))
+  hsv <- rgb2hsv(as.numeric(img[,,1]), as.numeric(img[,,2]), as.numeric(img[,,3]), maxColorValue = 1)
+  index <- which((hsv[2,] > 0.3) & (hsv[3,] > 0.3))
+  if (length(index))
+  {
+    posters$avg_red[i]    <- sum(hsv[1,index] < 0.075 | hsv[1,index] > 0.861) / prod(dim(img))
+    posters$avg_orange[i] <- sum(between(hsv[1,index], 0.075, 0.122)) / prod(dim(img))
+    posters$avg_yellow[i] <- sum(between(hsv[1,index], 0.122, 0.194)) / prod(dim(img))
+    posters$avg_green[i]  <- sum(between(hsv[1,index], 0.194, 0.464)) / prod(dim(img))
+    posters$avg_blue[i]   <- sum(between(hsv[1,index], 0.464, 0.708)) / prod(dim(img))
+    posters$avg_violet[i] <- sum(between(hsv[1,index], 0.708, 0.861)) / prod(dim(img))
+  }
+
+  index <- which((hsv[2,] <= 0.3) | (hsv[3,] <= 0.3))
+  if (length(index))
+  {
+    posters$avg_black[i]  <- sum(hsv[3,] < 0.25) / prod(dim(img))
+    posters$avg_grey[i]   <- sum(between(hsv[3,], 0.25, 0.8)) / prod(dim(img))
+    posters$avg_white[i]  <- sum(hsv[3,] > 0.8)  / prod(dim(img))
+  }
+}
+```
+
+Here is the distribution of the red color across the genres. Does this match your guess of which
+posters would have the most of least red? Try to change the code and use a different color. What
+pattern do you see?
+
+```{r}
+posters %>%
+  ggplot(aes(genre, avg_red)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+Now, let's see the posters that have the most of a specific color. Here we will start with violet,
+but try to change it to other colors and see what patterns are exposed:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_orange, n=20)$path), ncol=5)
+```
+
+# Edges 
+
+So far we have only focused on color, but there are many other aspects of images that we could
+extract and explore. As one more example here, let's look at how "busy" or "edgy" an image is.
+As an example of how to do this, let's start with our Toy Story poster, converting the image to
+black and white:
+
+```{r}
+img <- readJPEG(file.path("images", "movie-posters", posters$path[1]))
+d <- dim(img)
+img_bw <- (img[,,1] + img[,,2] + img[,,3]) / 3
+show_image_array(img_bw)
+```
+
+Now, lets subtract each pixels from the intensity of the pixel to its lower right. This will
+be large in magnitude at the edge, where one part of the image changes a lot from another. We 
+will visualize whenever this difference is larger than 0.6:
+
+```{r}
+img_edge <- img_bw[seq(2, d[1]),seq(2, d[2])] - img_bw[seq(1, d[1]-1),seq(1, d[2] - 1)]
+img_edge <- (img_edge - min(img_edge))
+img_edge <- img_edge / max(img_edge)
+img_edge <- (abs(1 - img_edge) > 0.6)
+
+show_image_array(img_edge)
+```
+
+Can you see why this is a measurement of edges and/or how busy the image is?
+
+Now, let's do the same thing over the whole corpus, taking the average absolute
+value of the edge score across the poster:
+
+```{r}
+posters$avg_edge <- 0
+for (i in seq_len(nrow(posters)))
+{
+  img <- readJPEG(file.path("images", "movie-posters", posters$path[i]))
+
+  d <- dim(img)
+  img_bw <- (img[,,1] + img[,,2] + img[,,3]) / 3
+
+  img_bw <- img_bw[seq(2, d[1]),seq(2, d[2])] - img_bw[seq(1, d[1]-1),seq(1, d[2] - 1)]
+  posters$avg_edge[i] <- mean(abs(img_bw))
+}
+```
+
+To help make sure you understand what is going on here, these are the posters with the highest
+edge scores:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_edge, n=20)$path), ncol=5)
+```
+
+And these have the lowest edge score:
+
+```{r}
+show_image(file.path("images", "movie-posters", top_n(posters, avg_edge, n=-20)$path), ncol=5)
+```
+
+Here we see the pattern of edgeness over time:
+
+```{r}
+posters %>%
+  ggplot(aes(year, avg_edge)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+And genre:
+
+```{r}
+posters %>%
+  ggplot(aes(genre, avg_edge)) +
+    stat_summary(fun.data=mean_cl_boot)
+```
+
+How would you describe these patterns? What information do they provide that are not available
+from the color alone? 
+
+Can you see applications for this in your own work?
+

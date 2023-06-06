@@ -1,0 +1,236 @@
+---
+title: "Notes 3: Working with Pixels"
+output: html_document
+---
+
+As before, start by loading the following packages, functions, and settings:
+
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+Remember that it is a good idea to re-start R before begining a new notebook.
+
+# What is a digital image?
+
+Let's read our posters dataset into R again.
+
+```{r, message=FALSE}
+posters <- read_csv(file.path("data", "movie-posters.csv"))
+```
+
+Instead of using the helper function `show_image`, this time we will directly load an image
+into R with the `readJPEG` function. To start, load the first poster image (from Toy Story):
+
+```{r}
+img <- readJPEG(file.path("images", "movie-posters", posters$path[1]))
+```
+
+The R function `class` tells us what type of object this is:
+
+```{r}
+class(img)
+```
+
+An array is a multidimensional grid of numbers. In other words, it is an R object that can store data in more than two dimensions. The `dim` function will tell us how many dimensions
+there are and their lengths:
+
+```{r}
+dim(img)
+```
+
+We see that the poster is 268 pixels high and 182 pixels wide. The number 3 represents the *color channels*
+of the image; it is three here because for each pixel we need three numbers indicating the intensity of the
+red, green, and blue channels, respectively. We can us an extension of our selection logic to look at a small
+part of the array. Here, we have the first 10 rows, columns 40 through 48, and all three color channels:
+
+```{r}
+img[1:10, 40:48, 1:3]
+```
+
+All of the numbers are between 0 and 1 (inclusive). It's hard to make much of these numbers directly,
+but this is the way that computers think about digital images. If we want to show an image that has
+already been read into R, use the `show_image_array` function, as we see here:
+
+```{r}
+show_image_array(img)
+```
+
+What does it look like if we only show the pixels from our small selection? Let's
+see:
+
+```{r}
+show_image_array(img[1:10, 40:48, 1:3])
+```
+
+Notice that it is mostly shades of blue, except for one corner of brown. Here is a slightly
+larger chunk of the image that stil shows the individual pixels:
+
+```{r}
+show_image_array(img[1:60, 40:80, 1:3])
+```
+
+# Pixel dataset
+
+So far we have done some exploratory analysis on metadata about a collection of images. Lets
+for a moment turn our single image into a dataset itself. We do this by making each row of the
+dataset correspond to a pixel. Our metadata will be the row and column numbers as well as the
+pixel intensities.
+
+```{r}
+pixels <- tibble(
+  row = as.numeric(row(img[,,1])),
+  col = as.numeric(col(img[,,1])),
+  red = as.numeric(img[,,1]),
+  green = as.numeric(img[,,2]),
+  blue = as.numeric(img[,,3])
+)
+pixels
+```
+
+We can then make a scatter plot of the red and green pixel intensities. What patterns do you
+see? Can you identify any of the clusters of points? (Note: the alpha setting makes the points
+opaque to better show the density of pixels in a region).
+
+```{r}
+ggplot(pixels, aes(red, green)) +
+  geom_point(alpha=0.1)
+```
+
+Let's try to associate each pixel directly with its color. To do this we add a new metadata column
+called `hex` that contains the hex code (a string representing color) for each pixel.
+
+```{r}
+pixels <- mutate(pixels, hex = rgb(red, green, blue))
+```
+
+Try to open the dataset and see what the hex codes look like. Now, we can build the same plot but
+color the points based on their hex value. The `scale_color_identity` tells R that we already know
+what colors to use and that we do not need it to make a pallet for us.
+
+```{r}
+pixels %>%
+  ggplot(aes(red, green)) +
+    geom_point(aes(color = hex), alpha=0.1) +
+    scale_color_identity()
+```
+
+Notice that pixels in the same spot do not always have the same color because they may have different
+amounts of green in them. Here is a similar plot for red versus blue:
+
+```{r}
+pixels %>%
+  ggplot(aes(red, blue)) +
+    geom_point(aes(color = hex), alpha=0.1) +
+    scale_color_identity()
+```
+
+Again, points at the same location may have different colors because of the amount of blue in them.
+What do you think about these three plots?
+
+# Hue, Saturation, and Value
+
+It is possible to describe the color of an image by describing the amount that red, green, and blue
+lights would need to be turned on in order to reproduce the observed color. This is a useful format 
+for digital displays, but as we have seen not particularly useful for analysis. A high amount of red
+may mean that a pixel is very red, but it may also mean that a pixel is white. It is useful to use 
+a different set of three numbers that describe a pixel's color in a different way.
+
+The color model tht we will use is called hue, saturation, and value. These are all also given as
+numbers between 0 and 1, but represent a pixel's color in a way that more closely maps the language
+that we use to describe colors. Value tells whether the pixel is dark (0) or light (1). Saturation
+tells whether the pixel is pale (0 is a grey) or rich (1). Hue tells where the pixel would land on
+a rainbow (0 is red and 1 is purple). Let's add these values to our dataset:
+
+```{r}
+hsv <- rgb2hsv(pixels$red, pixels$green, pixels$blue, maxColorValue = 1)
+pixels$hue <- hsv[1,]
+pixels$saturation <- hsv[2,]
+pixels$value <- hsv[3,]
+pixels
+```
+
+Note the the hex value is unchanged. The HSV model describes the same color as before, but does so
+using a different parameterisation of the color space. Let's look at a plot of hue and saturation
+to understand what these numbers mean. We will restrict ourselves to points with a low value because
+these are appear similar to black:
+
+```{r}
+pixels %>%
+  filter(value > 0.3) %>%
+  ggplot(aes(hue, saturation)) +
+    geom_point(aes(color = hex)) +
+    scale_color_identity()
+```
+
+How does this compare to the the plots above? Here is a similar plot with hue and value. We
+again filter, this time on saturation, to make sure that points are not too close to white:
+
+```{r}
+pixels %>%
+  filter(saturation > 0.3) %>%
+  ggplot(aes(hue, value)) +
+    geom_point(aes(color = hex)) +
+    scale_color_identity()
+```
+
+We can also see the distribution of value, which shows in general how light and dark the
+image is. Notice that there are a lot of pixels with a value that is very close to 1.
+
+```{r}
+ggplot(pixels, aes(value)) +
+  geom_histogram(color="black", fill="white", bins=30)
+```
+
+And a similar plot of saturation shows that there are many pixels that are almost completely
+saturated (this is a common in a cartoon):
+
+```{r}
+ggplot(pixels, aes(saturation)) +
+  geom_histogram(color="black", fill="white", bins=30)
+```
+
+Finally, filtering out low values and saturations because they are mostly black/grey/white, 
+we see the distribution of hues:
+
+```{r}
+pixels %>%
+  filter(value > 0.3, saturation > 0.3) %>%
+  ggplot(aes(hue)) +
+    geom_histogram(color="black", fill="white", bins=30)
+```
+
+It is a bit hard to interepret exactly what each of these hues represents. Let's add a bit more
+code to color the bars as the hue that they represent:
+
+```{r}
+pixels %>%
+  filter(value > 0.3, saturation > 0.3) %>%
+  mutate(hval = cut(hue, breaks=seq(0, 1, length.out=30), labels=FALSE, include.lowest = TRUE)) %>%
+  count(hval) %>%
+  mutate(hhex = hsv(h=hval/30, 1, 1)) %>%
+  ggplot(aes(hval/30, n)) +
+    geom_col(aes(fill=hhex), color="black") +
+    scale_fill_identity() +
+    xlab("Hue") + ylab("Number of Pixels")
+```
+
+Can you now see the most common colors? How do these relate to the original image?
+
+```{r}
+show_image_array(img)
+```
+
+
+Can you see applications for this in your own work?
+
+
+How might we make use of this information at scale across the whole collection?
+Let's most to our next set of notes!

@@ -1,0 +1,341 @@
+ ---
+title: "Notes 10: Visual Style in Two Network-Era Sitcoms"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(readr)
+library(stringi)
+library(forcats)
+library(ggplot2)
+library(viridis)
+library(gridExtra)
+library(tidyr)
+library(DescTools)
+
+narc_name <- c("Introduction", "Act 1", "Act 2", "Resolution")
+theme_set(theme_minimal())
+```
+
+# Moving images
+
+In this final notebook, we want to illustrate how the approach presented in this workshop (extracting
+features from visual data sources and then using EDA on the learned data) can be applied to moving 
+images. We do not have the time to go into details how to do the feature extraction, and will be focused
+on the EDA portion of the analysis. Code for the extraction of the features will be shared for interested
+users.
+
+The dataset we will use comes from a study of two U.S. Sitcoms: *Bewitched* and *I Dream of Jeannie*. The
+analysis was given in an article "Visual Style in Two Network-Era Sitcoms", published in the Journal of
+Cultural Analysis. Note that some of the visualization code and data manipulation code is a bit more
+complex than we have covered. The main point is to understand what is being shown in the output, rather
+than an in-depth analysis of the code producing the output.
+
+Here is the dataset that we will be working with; it consists of one row for each shot in every episode
+of each series:
+
+```{r, message=FALSE}
+shot <- read_csv(file.path("data", "visual-style-shot-data.csv"))
+shot
+```
+
+The extracted features include the start and stop times (and frame numbers), a description of
+the narrative arc as defined by the commercial breaks, the number of detected faces, the detected
+characters, and the shot-top.
+
+It will be useful to construct a new dataset by gathering the shot records together:
+
+```{r}
+chars <- gather(select(shot, series, video, sid, time, narc, shot_close, shot_twoshot,
+              Darrin, Endora, Larry, Samantha,
+              Alfred, Jeannie, Tony, Roger),
+       "character", "value", -series, -sid, -video, -time, -narc, -shot_close,
+       -shot_twoshot) %>%
+  filter(value == 1) %>%
+  select(-value)
+chars
+```
+
+We will also make a dataset showing who was the first character seen in each episode.
+
+```{r}
+first_face <- shot %>%
+  filter(fchar != "") %>%
+  group_by(series, video) %>%
+  summarize(fchar = first(fchar)) %>%
+  mutate(multi = stri_detect(fchar, fixed = ";"))
+```
+
+Each of the following code chunks creates a figure in the paper. We will discuss in person
+the meaning of each plot and how it tells us something about the source material.
+
+# Character Centrality
+
+Here is an example of the detected characters and narrative breaks from one episode of Bewitched:
+
+```{r}
+vname <- "bw_s04_e03"
+
+sh <- shot %>%
+  filter(video == vname) %>%
+  mutate(ttime = cumsum(time) / 60) %>%
+  select(video, sid, ttime)
+
+cp <- shot %>%
+  filter(video == vname) %>%
+  mutate(ttime = cumsum(time) / 60) %>%
+  filter(!duplicated(narc), narc != "p5") %>%
+  select(video, ttime)
+
+chars %>%
+  filter(video == vname) %>%
+  left_join(sh, by = c("video", "sid")) %>%
+  ggplot(aes(ttime, character)) +
+    geom_point(aes(color = character), show.legend = FALSE) +
+    scale_color_viridis(discrete = TRUE) +
+    geom_vline(xintercept = c(cp$ttime, max(sh$ttime)), lty="dashed") +
+    xlab("Minutes of Episode") + ylab("") +
+    ggtitle("\"Business, Italian Style\" (Bewitched, Season 3, Episode 7)")
+```
+
+Next, the average minutes per episode for which a character is visible. Error bars with 95% confidence
+intervals for the mean of each group.
+
+```{r}
+chars %>%
+  group_by(series, character, video) %>%
+  summarize(shot_time = sum(time) / 60) %>%
+  summarize(mu = mean(shot_time), s = sd(shot_time), n = n()) %>%
+  ungroup() %>%
+  mutate(low = mu - s / sqrt(n) * 1.96,
+       high = mu + s / sqrt(n) * 1.96) %>%
+  mutate(character = stri_trans_totitle(character)) %>%
+  arrange(desc(mu)) %>%
+  ggplot(aes(fct_inorder(character), mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1,
+                  show.legend = FALSE) +
+    geom_point(aes(color = series), show.legend = FALSE) +
+    facet_wrap(~series, scale = "free_x") +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    xlab("Character")+ ylab("Average Minutes per Episode")
+```
+
+Now, the number of episodes for which a character was seen.
+
+```{r}
+temp <- chars %>%
+  count(series, character, narc, video) %>%
+  filter(n > 5) %>%
+  select(-n) %>%
+  count(series, character, narc) %>%
+  mutate(narc = as.numeric(stri_sub(narc, 2, 2)))
+
+p1 <- filter(temp, series == "Bewitched") %>%
+  ggplot(aes(narc, n)) +
+    geom_line(aes(color = character), size=0.2) +
+    geom_point(aes(color = character), size=3) +
+    scale_color_viridis(discrete = TRUE) +
+    scale_x_continuous(breaks = c(1, 2, 3, 4),
+                       labels = narc_name) +
+    scale_y_continuous(limits = c(0, NA)) +
+    xlab("Bewitched") + ylab("Number of Episodes") +
+    labs(color = "Character")
+
+p2 <- filter(temp, series == "I Dream of Jeannie") %>%
+  ggplot(aes(narc, n)) +
+    geom_line(aes(color = character), size=0.2) +
+    geom_point(aes(color = character), size=3) +
+    scale_color_viridis(discrete = TRUE) +
+    scale_x_continuous(breaks = c(1, 2, 3, 4),
+                       labels = narc_name) +
+    scale_y_continuous(limits = c(0, NA)) +
+    xlab("I Dream of Jeannie") + ylab("Number of Episodes") +
+    labs(color = "Character")
+
+p3 <- grid.arrange(p1, p2, nrow=2)
+p3
+```
+
+The number of episodes where each character is associated with the first face detected in an episode.
+
+```{r}
+filter(first_face, !multi) %>%
+  ggplot(aes(fct_rev(fchar))) +
+    geom_bar(aes(fill = series), show.legend = FALSE) +
+    scale_fill_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    facet_wrap(~series, scale="free") +
+    xlab("") + ylab("Number of Episodes") + labs(fill="Narrative Act") +
+    coord_flip() +
+    guides(fill = guide_legend(reverse=TRUE))
+```
+
+Average minutes per episode for which a character is visible in a close shot. Error bars with 95% confidence
+intervals for the mean of each group.
+
+```{r}
+chars %>%
+  semi_join(filter(shot, shot_close == 1), by = c("video", "sid")) %>%
+  group_by(series, character, video) %>%
+  summarize(shot_time = sum(time) / 60) %>%
+  summarize(mu = mean(shot_time), s = sd(shot_time), n = n()) %>%
+  ungroup() %>%
+  mutate(low = mu - s / sqrt(n) * 1.96,
+       high = mu + s / sqrt(n) * 1.96) %>%
+  mutate(character = stri_trans_totitle(character)) %>%
+  arrange(desc(mu)) %>%
+  ggplot(aes(fct_inorder(character), mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1,
+                  show.legend = FALSE) +
+    geom_point(aes(color = series), show.legend = FALSE) +
+    facet_wrap(~series, scale = "free_x") +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    xlab("Character")+ ylab("Average Minutes per Episode")
+```
+
+Proportion of time for which each character is shown in a close up shot as a ratio of the total time
+they are present in the show. Error bars with 95% confidence intervals for the mean of each group.
+
+```{r}
+chars %>%
+  mutate(time_close = if_else(shot_close == 1, time, 0)) %>%
+  group_by(series, character, video) %>%
+  summarize(avg_close = sum(time_close) / sum(time)) %>%
+  summarize(mu = mean(avg_close), s = sd(avg_close), n = n()) %>%
+  mutate(low = mu - s / sqrt(n) * 1.96,
+         high = mu + s / sqrt(n) * 1.96) %>%
+  arrange(desc(mu)) %>%
+  ggplot(aes(fct_inorder(character), mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1,
+                  show.legend = FALSE) +
+    geom_point(aes(color = series), show.legend = FALSE) +
+    facet_wrap(~series, scale = "free_x") +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    xlab("Character")+ ylab("Percentage of Close Shots")
+```
+
+# Narrative Act and Style
+
+Percentage of all shots classified as ‘close’ as a function of narrative act and series. Error bars
+with 95% confidence intervals for the mean of each group.
+
+```{r}
+shot %>%
+  group_by(series, narc, video) %>%
+  summarize(shot_close_mean = mean(shot_close)) %>%
+  summarize(mu = 100 * mean(shot_close_mean),
+            s  = 100 *sd(shot_close_mean), n = n()) %>%
+  mutate(low = mu - s / sqrt(n) * 1.96, high = mu + s / sqrt(n) * 1.96) %>%
+  mutate(narc = as.numeric(stri_sub(narc, 2, 2))) %>%
+  ggplot(aes(narc, mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1) +
+    geom_point(aes(colour = series)) +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    scale_x_continuous(breaks = c(1, 2, 3, 4),
+                       labels = narc_name) +
+    xlab("Narrative Part") + ylab("Average Percentage of Close Shots") +
+    labs(colour = "Series")
+```
+
+Percentage of all shots classified as group shots with three or more characters present,
+as a function of narrative act and series. Error bars with 95% confidence intervals for
+the mean of each group.
+
+```{r}
+shot %>%
+  group_by(series, narc, video) %>%
+  summarize(shot_group_mean = mean(shot_group)) %>%
+  summarize(mu = 100 * mean(shot_group_mean),
+            s  = 100 *sd(shot_group_mean), n = n()) %>%
+  mutate(low = mu - s / sqrt(n) * 1.96, high = mu + s / sqrt(n) * 1.96) %>%
+  mutate(narc = as.numeric(stri_sub(narc, 2, 2))) %>%
+  ggplot(aes(narc, mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1) +
+    geom_point(aes(colour = series)) +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    scale_x_continuous(breaks = c(1, 2, 3, 4),
+                       labels = narc_name) +
+    xlab("Narrative Part") + ylab("Average Percentage of Group Shots") +
+    labs(colour = "Series")
+```
+
+# Median Shot Length (MLS) and Shot Type
+
+Median shot length for each series separated into close shots, two shots, and long shots. 
+95% confidence intervals for the median are given for each group.
+
+```{r}
+shot %>%
+  mutate(shot_type = if_else(shot_close == 1, "Close", "Long")) %>%
+  mutate(shot_type = if_else(shot_twoshot == 1, "Two shot", shot_type)) %>%
+  group_by(series, shot_type) %>%
+  summarize(obj = list(MedianCI(time, conf.level = 0.95))) %>%
+  ungroup() %>%
+  rowwise() %>%
+  mutate(msl = obj['median'], low = obj['lwr.ci'], high = obj['upr.ci']) %>%
+  select(-obj) %>%
+  arrange(series, msl) %>%
+  ggplot(aes(fct_inorder(shot_type), msl)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series),
+                      width=.1, show.legend = FALSE) +
+    geom_point(aes(color = series), show.legend = FALSE) +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    facet_wrap(~series, scale="free_x") +
+    xlab("Shot Type") + ylab("Median Shot Length (seconds)")
+```
+
+Percentage of shots that were classified as close or close two from both Act 1 and Act 2 as function
+of whether the shot was the first in the act, last in the act, or somewhere in the middle. 95%
+confidence intervals for the proportion are given.
+
+```{r}
+shot %>%
+  filter(narc %in% c("p2", "p3")) %>%
+  group_by(series, narc, video) %>%
+  mutate(type = if_else(sid == min(sid), "First", "Middle"),
+         type = if_else(sid == max(sid), "Last", type)) %>%
+  group_by(series, narc, type) %>%
+  mutate(shot_close = as.numeric((shot_close + shot_twoshot) > 0)) %>%
+  summarize(mu = 100 * mean(shot_close), s  = 100 * sd(shot_close), n = n()) %>%
+  mutate(low = mu - s / sqrt(n) * 1.96, high = mu + s / sqrt(n) * 1.96) %>%
+  ungroup() %>%
+  mutate(narc = if_else(narc == "p2", "Act 1", "Act 2")) %>%
+  ggplot(aes(fct_relevel(type, "First", "Middle", "Last"), mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1) +
+    geom_point(aes(colour = series)) +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    facet_wrap(~narc) +
+    scale_y_continuous(limit = c(0, NA)) +
+    xlab("Location within Narrative Part") + ylab("Average Percentage of Close and Close Two Shots") +
+    labs(colour = "Series")
+```
+
+Median shot length of long shots for Act 1 and Act 2 as function of whether the shot was the first in
+the act, last in the act, or somewhere in the middle. 95% confidence intervals for the median are given.
+
+```{r}
+shot %>%
+  filter(narc %in% c("p2", "p3")) %>%
+  group_by(series, narc, video) %>%
+  mutate(type = if_else(sid == min(sid), "First", "Middle"),
+         type = if_else(sid == max(sid), "Last", type)) %>%
+  ungroup() %>%
+  filter(shot_close == 0, shot_twoshot == 0) %>%
+  group_by(series, narc, type) %>%
+  summarize(obj = list(MedianCI(time, conf.level = 0.95))) %>%
+  ungroup() %>%
+  rowwise() %>%
+  mutate(mu = obj['median'], low = obj['lwr.ci'], high = obj['upr.ci']) %>%
+  select(-obj) %>%
+  mutate(narc = if_else(narc == "p2", "Act 1", "Act 2")) %>%
+  ggplot(aes(fct_relevel(type, "First", "Middle", "Last"), mu)) +
+    geom_errorbar(aes(ymin=low, ymax=high, color = series), width=.1) +
+    geom_point(aes(colour = series)) +
+    scale_color_viridis(discrete = TRUE, begin = 0.4, end = 0.9) +
+    facet_wrap(~narc) +
+    scale_y_continuous(limit = c(0, NA)) +
+    xlab("Location within Narrative Part") + ylab("Median Shot Length (Long Shots)") +
+    labs(colour = "Series")
+```

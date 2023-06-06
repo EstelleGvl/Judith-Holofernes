@@ -1,0 +1,1652 @@
+ ---
+title: "Judith"
+output: html_document
+---
+
+```{r, message=FALSE}
+if (!require("readr"))     install.packages("readr",     repos = "https://cran.rstudio.com/")
+if (!require("dplyr"))     install.packages("dplyr",     repos = "https://cran.rstudio.com/")
+if (!require("ggplot2"))   install.packages("ggplot2",   repos = "https://cran.rstudio.com/")
+if (!require("maps"))      install.packages("maps",      repos = "https://cran.rstudio.com/")
+if (!require("mapproj"))   install.packages("mapproj",   repos = "https://cran.rstudio.com/")
+if (!require("cleanNLP"))  install.packages("cleanNLP",  repos = "https://cran.rstudio.com/")
+if (!require("stringi"))   install.packages("stringi",   repos = "https://cran.rstudio.com/")
+if (!require("forcats"))   install.packages("forcats",   repos = "https://cran.rstudio.com/")
+if (!require("ggplot2"))   install.packages("ggplot2",   repos = "https://cran.rstudio.com/")
+if (!require("Hmisc"))     install.packages("Hmisc",     repos = "https://cran.rstudio.com/")
+if (!require("igraph"))    install.packages("igraph",    repos = "https://cran.rstudio.com/")
+if (!require("tidyr"))     install.packages("tidyr",     repos = "https://cran.rstudio.com/")
+if (!require("gridExtra")) install.packages("gridExtra", repos = "https://cran.rstudio.com/")
+if (!require("DescTools")) install.packages("DescTools", repos = "https://cran.rstudio.com/")
+if (!require("hexbin"))    install.packages("hexbin",    repos = "https://cran.rstudio.com/")
+if (!require("ggthemes"))  install.packages("ggthemes",    repos = "https://cran.rstudio.com/")
+if (!require("plotly"))    install.packages("plotly",    repos = "https://cran.rstudio.com/")
+if (!require("keras"))     install.packages("keras", repos = "https://cran.rstudio.com/")
+```
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringi)
+library(jpeg)
+library(ggthemes)
+library(scales)
+library(maps)
+library(plotly)
+library(gapminder)
+source(file.path("scripts", "funs.R"))
+library(igraph)
+theme_set(theme_minimal())
+source("scripts/funs.R")
+```
+
+
+
+
+# Your own dataset 
+
+These notes show you how to use these notes with your own data. The notebook works by
+default on the images put in the directory named "test". We put a few images in here 
+to start, but you can add more to the directory and re-run this notebook. If you modify
+the name of the file in the code below, you can replicate for a dataset with your own
+choosen name by just changing the following line of code to the dataset name that you
+would like to use. 
+
+
+```{r}
+cn <- "Judith"
+```
+
+The first thing that we need to do is find all of the images in the test directory. Our
+test dataset contains images of judith :
+
+
+```{r}
+head(dir(file.path("images", cn)))
+```
+
+
+# Images with no metadata (i.e. csv file)
+
+We will make a dataset from these paths:
+
+```{r}
+mydata <- tibble(path = dir(file.path("images", cn)))
+mydata
+```
+
+```{r}
+path <- file.path("data", sprintf("%s.csv", cn))
+if (!file.exists(path)) {
+  write_csv(mydata, path)
+}
+```
+
+# Images with metadata (i.e. a .csv file)
+```{r}
+mydata <- read_csv(file.path("data", sprintf("%s.csv", cn)))
+```
+
+# Adding Color Data
+
+And then start to fill in the various metrics that we used throughout the lessons.
+Start by creating each of the variables:
+
+```{r}
+mydata$avg_red    <- 0
+mydata$avg_orange <- 0
+mydata$avg_yellow <- 0
+mydata$avg_green  <- 0
+mydata$avg_blue   <- 0
+mydata$avg_violet <- 0
+mydata$avg_black  <- 0
+mydata$avg_grey   <- 0
+mydata$avg_white  <- 0
+mydata$avg_saturation <- 0
+mydata$avg_value      <- 0
+```
+
+And then cycle through the images. Because this can take a long time with larger datasets,
+we wrote a line of code to let us know everytime it has processed 10 new images
+
+```{r}
+for (i in seq_len(nrow(mydata)))
+{
+  img <- readJPEG(file.path("images", cn, mydata$path[i]))
+  hsv <- rgb2hsv(as.numeric(img[,,1]), as.numeric(img[,,2]), as.numeric(img[,,3]), maxColorValue = 1)
+  index <- which((hsv[2,] > 0.3) & (hsv[3,] > 0.3))
+  if (length(index))
+  {
+    mydata$avg_red[i]    <- sum(hsv[1,index] < 0.075 | hsv[1,index] > 0.861) / prod(dim(img))
+    mydata$avg_orange[i] <- sum(between(hsv[1,index], 0.075, 0.122)) / prod(dim(img))
+    mydata$avg_yellow[i] <- sum(between(hsv[1,index], 0.122, 0.194)) / prod(dim(img))
+    mydata$avg_green[i]  <- sum(between(hsv[1,index], 0.194, 0.464)) / prod(dim(img))
+    mydata$avg_blue[i]   <- sum(between(hsv[1,index], 0.464, 0.708)) / prod(dim(img))
+    mydata$avg_violet[i] <- sum(between(hsv[1,index], 0.708, 0.861)) / prod(dim(img))
+  }
+
+  index <- which((hsv[2,] <= 0.3) | (hsv[3,] <= 0.3))
+  if (length(index))
+  {
+    mydata$avg_black[i]  <- sum(hsv[3,] < 0.25) / prod(dim(img))
+    mydata$avg_grey[i]   <- sum(between(hsv[3,], 0.25, 0.8)) / prod(dim(img))
+    mydata$avg_white[i]  <- sum(hsv[3,] > 0.8)  / prod(dim(img))
+  }
+
+  mydata$avg_saturation[i] <- mean(hsv[2,hsv[3,] > 0.3])
+  mydata$avg_value[i] <- mean(img)
+
+  if ((i %% 10) == 0) print(sprintf("Done with %d of %d", i, nrow(mydata)))
+}
+
+```
+
+And now we should have our dataset:
+
+```{r}
+mydata
+```
+
+
+
+# MY OWN EXPERIMENTS
+
+```{r}
+mydata$century
+```
+
+```{r, warning=FALSE}
+ggplot(mydata, aes(country, type)) +
+  geom_violin()
+```
+
+# GENERAL
+
+```{r}
+count(mydata, country, sort=TRUE)
+ggplot(mydata, aes(country, fill = country)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.5, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of manuscripts by country")
+```
+
+```{r}
+count(mydata, century, sort=TRUE)
+ggplot(mydata, aes(century, fill = century)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = -0.5, colour = "black")+
+  ggtitle("Distribution of manuscripts by century")
+```
+
+```{r}
+count(mydata, title, sort=TRUE)
+ggplot(mydata, aes(title, fill = title)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.25, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of manuscripts by text")
+```
+
+
+
+```{r}
+count(mydata, type, sort=TRUE)
+ggplot(mydata, aes(type, fill = century)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", position = position_stack(vjust = 0.5), colour = "black")+
+  ggtitle("Distribution of manuscripts by type of decoration")
+```
+
+```{r}
+count(mydata, type, sort=TRUE)
+ggplot(mydata, aes(type, fill = century)) +
+  geom_bar(stat="count", position ="fill") +
+  ggthemes::theme_economist()+
+  theme(axis.text.x = element_text(angle = 90,hjust =0 ))+
+  labs(title ="Distribution of manuscripts by type of decoration")+
+  labs(x ="type", y = "Percentage")+
+  scale_y_continuous(labels = scales::percent)
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(type, century)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+count(mydata, type, sort=TRUE)
+pl <- ggplot(data = dt,aes(x= type, y = n,fill = century))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 2)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Distribution of manuscripts by type of decoration and century")
+pl
+
+```
+
+
+
+
+
+
+
+# ACTION
+
+```{r}
+count(mydata, action, sort=TRUE)
+ggplot(mydata, aes(action, fill = action)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.5, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of manuscripts by action")
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(century, action)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= century, y = n,fill = action))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action by century")
+pl
+ggplotly(pl)
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(action, century)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= action, y = n,fill = century))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action by century")
+pl
+ggplotly(pl)
+```
+
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(country, action)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= country, y = n,fill = action))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action by country")
+pl
+ggplotly(pl)
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(action, country)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= action, y = n,fill = country))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action by country")
+pl
+ggplotly(pl)
+```
+
+```{r}
+pl <- ggplot(mydata, aes(x=century,fill = action)) +
+    geom_bar() + 
+    geom_text(aes(label = ..count..), stat = "count", position = position_stack(vjust = 0.5)) +
+    ggtitle("Action by century")
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+# BEHEADING
+
+```{r}
+beheading <- filter(mydata,  action %in% c("Sword_beheading"))
+ggplot(beheading, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  ggtitle("Sword beheading by century with blood repartition")
+
+
+beheading <- filter(mydata,  action %in% c("Sword_beheading"))
+ggplot(beheading, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  ggtitle("Sword beheading by century with blood repartition")
+
+
+beheading <- filter(mydata,  action %in% c("Sword_beheading"))
+ggplot(beheading, aes(type, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Sword beheading by type of decoration with blood repartition")
+```
+
+
+
+
+# BEHEADED
+
+```{r}
+beheading <- filter(mydata,  action %in% c("Beheaded"))
+ggplot(beheading, aes(type, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Holofernes beheaded by type of decoration with blood repartition")
+
+
+beheaded <- filter(mydata,  action %in% c("Beheaded"))
+pl <- ggplot(beheaded, aes(century, fill = action)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", vjust = -0.5, colour = "black") + 
+  ggtitle("Holofernes beheaded by century")
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+# BLOOD
+
+```{r}
+mydata %>% 
+    count(blood = factor(blood)) %>% 
+    mutate(pct = prop.table(n))
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(century, blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+count(mydata, type, sort=TRUE)
+pl <- ggplot(data = dt,aes(x= century, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 2)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Presence of blood by century")
+pl
+
+dt <- mydata%>%
+  dplyr::group_by(action, blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= action, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Presence of blood by type of action")
+pl
+```
+
+```{r}
+beheading <- filter(mydata,  action %in% c("Sword_beheading"))
+ggplot(beheading, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  ggtitle("Sword beheading by century with blood repartition")
+
+beheading <- filter(mydata,  action %in% c("Sword_beheading"))
+ggplot(beheading, aes(type, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Sword beheading by type of decoration with blood repartition")
+```
+
+```{r}
+beheading <- filter(mydata,  action %in% c("Beheaded"))
+ggplot(beheading, aes(type, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Holofernes beheaded by type of decoration with blood repartition")
+
+```
+
+```{r}
+pl <- ggplot(data = mydata, aes(x = factor(century), 
+                          y = prop.table(stat(count)), 
+                          fill = factor(blood), 
+                          label = scales::percent(prop.table(stat(count))))) +
+    geom_bar(position = "dodge") + 
+    geom_text(stat = 'count',
+              position = position_dodge(.9), 
+              vjust = -0.5, 
+              size = 3) + 
+    scale_y_continuous(labels = scales::percent) + 
+    labs(x = 'century', y = 'pct', fill = 'blood') +
+    ggtitle("Presence of blood by century in percentages")
+pl
+ggplotly(pl)
+
+pl <- ggplot(data = mydata, aes(x = factor(century), 
+                          y = prop.table(stat(count)), 
+                          fill = factor(blood))) +
+    geom_bar(position = "fill") + 
+    geom_text(aes(label = ..count..), stat = "count", position = position_fill(vjust = 0.5), size = 3) +
+    scale_y_continuous(labels = scales::percent) + 
+    labs(x = 'century', y = 'pct', fill = 'blood') +
+    ggtitle("Presence of blood by century in percentages")
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+
+
+# Texts
+
+```{r}
+count(mydata, title, sort=TRUE)
+```
+
+```{r}
+ParisBible <- filter(mydata,  title %in% c("Parisian Bible"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Paris Bibles by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Speculum humanae salvationis"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Speculum humanae salvationis by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Histoire ancienne jusqu'a Cesar"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Histoire ancienne jusqu'a Cesar by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Breviary"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Breviary by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Speculum historiale"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Speculum historiale by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Bible"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Bible by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("Glossed Bible"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Glossed Bible by century and presence of blood")
+
+ParisBible <- filter(mydata,  title %in% c("HistorienBible"))
+ggplot(ParisBible, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("HistorienBible by century and presence of blood")
+
+```
+
+```{r}
+ParisBible <- filter(mydata,  title %in% c("Parisian Bible"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Paris Bibles by century and aciton represented")
+
+ParisBible <- filter(mydata,  title %in% c("Speculum humanae salvationis"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Speculum humanae salvationis by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("Histoire ancienne jusqu'a Cesar"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Histoire ancienne jusqu'a Cesar by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("Breviary"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Breviary by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("Speculum historiale"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Speculum historiale by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("Bible"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Bible by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("Glossed Bible"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Glossed Bible by century and action represented")
+
+ParisBible <- filter(mydata,  title %in% c("HistorienBible"))
+ggplot(ParisBible, aes(action, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("HistorienBible by century and action represented")
+
+Historial <- filter(mydata,  title %in% c("Bible historiale"))
+ggplot(Historial, aes(century, fill = title)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.25, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of Bibles historiales by century")
+```
+
+
+
+
+
+
+
+# Language
+```{r}
+Spe_histo <- filter(mydata,  title %in% c("Speculum historiale"))
+ggplot(Spe_histo, aes(century, fill = language)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Speculum historiale by century and language")
+
+
+ggplot(mydata, aes(title, fill = language)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("All texts by language")
+
+ggplot(mydata, aes(language, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of blood by language of the text")
+
+ggplot(mydata, aes(language, fill = action)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Action by language")
+
+dt <- mydata%>%
+  dplyr::group_by(language,  action)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= language, y = n,fill = action))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action by language in percentages")
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(language,  blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= language, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Blood by language in percentages")
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(language,  holofernes_crowned)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= language, y = n,fill = holofernes_crowned))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Blood by language in percentages")
+ggplotly(pl)
+
+```
+
+
+
+
+
+
+
+
+
+# Illumination types
+```{r}
+pl <- ggplot(mydata, aes(type, fill = century)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Illumination type by century")
+pl
+ggplotly(pl)
+```
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(type,  century)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= type, y = n,fill = century))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + coord_flip()
+pl <- pl  + ggtitle("Illumination type by century in percentages")
+pl
+ggplotly(pl)
+```
+
+```{r}
+pl <- ggplot(data = mydata, aes(x = factor(type), 
+                          y = prop.table(stat(count)), 
+                          fill = factor(century), 
+                          label = scales::percent(prop.table(stat(count))))) +
+    geom_bar(position = "dodge") + 
+    geom_text(stat = 'count',
+              position = position_dodge(.9), 
+              vjust = -0.5, 
+              size = 3) + 
+    scale_y_continuous(labels = scales::percent) + 
+    labs(x = 'type', y = 'pct', fill = 'century') +
+    ggtitle("Illumination type by century in percentages") +
+    coord_flip()
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+# Stripes
+```{r}
+pl <- ggplot(mydata, aes(century, fill = stripes)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of stripes by century")
+pl
+ggplotly(pl)
+
+
+pl <- ggplot(mydata, aes(type, fill = stripes)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of stripes by type")
+pl
+ggplotly(pl)
+
+```
+
+```{r}
+Stripes_P <- filter(mydata,  stripes %in% c("Stripes"))
+pl <- ggplot(Stripes_P, aes(century, fill = blood)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of stripes and blood")
+pl
+ggplotly(pl)
+
+Stripes_P <- filter(mydata,  stripes %in% c("Stripes"))
+pl <- ggplot(Stripes_P, aes(century, fill = action)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of stripes by century")
+pl
+ggplotly(pl)
+
+Stripes_P <- filter(mydata,  stripes %in% c("Stripes"))
+pl <- ggplot(Stripes_P, aes(title, fill = action)) +
+  geom_bar() + 
+  geom_text(aes(label = ..count..), stat = "count", position=position_stack(vjust=0.5), colour = "black") + 
+  coord_flip()+
+  ggtitle("Presence of stripes by century")
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+
+
+# Crown
+
+```{r}
+crown <- filter(mydata,  holofernes_crowned %in% c("Crowned"))
+ggplot(crown, aes(century, fill = blood)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.25, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of Bibles historiales by century")
+
+dt <- mydata%>%
+  dplyr::group_by(century, holofernes_crowned)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= century, y = n, fill = holofernes_crowned))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes crowned by century")
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(type, holofernes_crowned)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= type, y = n, fill = holofernes_crowned))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes crowned by type of decoration") +
+              coord_flip()
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(action, holofernes_crowned)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= action, y = n, fill = holofernes_crowned))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes crowned by action")+
+              coord_flip()
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+
+# Sword
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(century, sword)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= century, y = n, fill = sword))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Sword by century")
+pl
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(country, sword)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= country, y = n,fill = sword))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Sword by Country")
+pl
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(type, sword)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= type, y = n,fill = sword))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Sword by type of decoration")
+pl
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(title, sword)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= title, y = n,fill = sword))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Sword by text")
+pl
+ggplotly(pl)
+```
+
+```{r}
+Sword <- filter(mydata,  sword %in% c("Two-hands_sword"))
+dt <- Sword%>%
+  dplyr::group_by(title, blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= title, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Two-hands sword by text and presence of blood")
+pl
+ggplotly(pl)
+
+
+Sword <- filter(mydata,  sword %in% c("One-hand_sword"))
+dt <- Sword%>%
+  dplyr::group_by(title, blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= title, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("One-hand sword by text and presence of blood")
+pl
+ggplotly(pl)
+
+Sword <- filter(mydata,  sword %in% c("Sabre"))
+dt <- Sword%>%
+  dplyr::group_by(title, century)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+pl <- ggplot(data = dt,aes(x= title, y = n,fill = century))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("sabre by text and presence of blood")
+pl
+ggplotly(pl)
+```
+
+
+
+
+# HOLOFERNES NAKED
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(century, holofernes_naked)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= century, y = n,fill = holofernes_naked))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes naked by century")
+pl
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(country, holofernes_naked)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= country, y = n,fill = holofernes_naked))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes naked by country")
+pl
+ggplotly(pl)
+
+dt <- mydata%>%
+  dplyr::group_by(type, holofernes_naked)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= type, y = n,fill = holofernes_naked)) +
+          geom_bar(stat="identity") +
+          geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+          theme(axis.text.x = element_text(angle = 90,hjust =0 )) +
+          ggtitle("Holofernes naked by type of decoration")
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(language, holofernes_naked)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= language, y = n,fill = holofernes_naked)) +
+          geom_bar(stat="identity") +
+          geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+          theme(axis.text.x = element_text(angle = 90,hjust =0 )) +
+          ggtitle("Holofernes naked by language")
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(title, holofernes_naked)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= title, y = n,fill = holofernes_naked)) +
+          geom_bar(stat="identity") +
+          geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3) +
+          theme(axis.text.x = element_text(angle = 90,hjust =0 )) +
+          ggtitle("Holofernes naked by text")+
+              coord_flip()
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+
+# Reader
+
+```{r}
+dt <- mydata%>%
+  dplyr::group_by(century, Intended_reader)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= century, y = n,fill = Intended_reader))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes naked by century")
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(Intended_reader, blood)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= Intended_reader, y = n,fill = blood))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Holofernes naked by century")
+pl
+ggplotly(pl)
+
+
+dt <- mydata%>%
+  dplyr::group_by(Intended_reader, action)%>%
+  dplyr::tally()%>%
+  dplyr::mutate(percent=n/sum(n))
+
+pl <- ggplot(data = dt,aes(x= Intended_reader, y = n,fill = action))
+pl <- pl + geom_bar(stat="identity")
+pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
+                     position=position_stack(vjust=0.5), colour="black", size = 3)
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
+pl <- pl  + ggtitle("Action represented by intended reader")
+pl
+ggplotly(pl)
+
+```
+
+
+
+
+
+
+
+
+
+
+# DIVERSE
+
+```{r}
+pl <- ggplot(mydata, aes(century, title)) +
+  geom_text(aes(label = country, color=type))
+pl
+ggplotly(pl)
+```
+
+```{r}
+pl <- ggplot(mydata, aes(century, title)) +
+  geom_text(aes(label = action, color=action))
+pl
+ggplotly(pl)
+```
+
+
+
+
+
+
+
+
+
+
+# IMAGE ANALYSIS
+
+```{r}
+show_image(file.path("images", cn, top_n(mydata, avg_red, n=10)$path), ncol=5) +
+posters$title[4001:4020]
+  
+
+show_image(file.path("images","movie-posters", posters$path[4001:4020]), ncol=5)
+posters$title[4001:4020]
+posters$rating[4001:4020]
+  
+```
+
+```{r}
+show_image(file.path("images", cn, top_n(mydata, avg_blue, n=10)$path), ncol=5)
+```
+
+```{r}
+show_image(file.path("images", cn, top_n(mydata, avg_green, n=10)$path), ncol=5)
+```
+
+```{r}
+show_image(file.path("images", cn, top_n(mydata, avg_black, n=10)$path), ncol=5)
+```
+
+
+# Deep Learning
+
+Running the neural network models requires some additional setup. The actual code is straightforward,
+but the setup process can be challenging, particularly on a Windows machine.
+
+The next, more involved step, is to install Python3 and the Python library called Keras. You should
+do this by first installing Anaconda Python version 3.7 (or higher) from here:
+
+    https://www.anaconda.com/distribution/#download-section
+    
+Then, you need to install two Python packages. You can do this by either following the instructions
+from the R-side:
+
+    https://keras.rstudio.com/
+
+Or the instructions for installing the Python-side:
+
+    https://keras.io/#installation
+    
+The first option should be the easiest approach in theory, but we have found that 
+has a relatively low-success rate in practice. The second approach requires understanding a bit more about how Python works.
+
+Once you have everything installed, load the keras library and set the following environmental
+variable (it ignored a common warning the causes the system to crash on macOS):
+
+```{r}
+library(keras)
+
+Sys.setenv(KMP_DUPLICATE_LIB_OK="TRUE")
+```
+
+Then, we load the pre-trained ResNet-50 model. This can take a bit of time, particularly the first
+time on a slow connection because it needs to download a relatively large dataset. Just give it time,
+it usually works eventually.
+
+```{r}
+resnet50 <- application_resnet50(weights = 'imagenet', include_top = TRUE)
+model_avg_pool <- keras_model(inputs = resnet50$input,
+                              outputs = get_layer(resnet50, 'avg_pool')$output)
+```
+
+Next, we load all of the images and pass them through a special preprocessing
+function to standardize the distribution of the red, green, and blue pixel intensities to
+match the data that the model was trained with. (Note: this approach work for a few thousand
+images; after that, you'll need to process the dataset in batched. If that becomes a problem,
+please let us know).
+
+```{r}
+data <- read_csv(file.path("data", sprintf("%s.csv", cn)), )
+Z <- array(0, dim = c(length(data$path), 224, 224, 3))
+for (i in seq_len(nrow(data)))
+{
+  pt <- file.path("images", cn, data$path[i])
+  image <- image_to_array(image_load(pt, target_size = c(224,224)))
+  Z[i,,,] <- array_reshape(image, c(1, dim(image)))
+}
+Z <- imagenet_preprocess_input(Z)
+```
+
+Now, embed each image into the avg_pool layer and save the results:
+
+```{r}
+X <- predict(model_avg_pool, x = Z, verbose = TRUE)
+write_rds(X, file.path("models", sprintf("%s-pool.rds", cn)))
+```
+
+And finally, embed into the final layer and save results:
+
+```{r}
+X <- predict(resnet50, x = Z, verbose = TRUE)
+preds <- Reduce(bind_rows, keras::imagenet_decode_predictions(X, top = 25))
+preds$path <- rep(data$path, each = 25)
+preds$rank <- rep(seq_len(25), nrow(data))
+write_csv(preds, file.path("models", sprintf("%s-resnet50.csv", cn)))
+```
+
+You should have now created all of the same data we provided for the datasets included with this
+tutorial. We can test out how well it works by loading the data back into R. 
+
+```{r}
+resnet <- read_csv(file.path("models", sprintf("%s-resnet50.csv", cn)))
+filter(resnet, score > 0.9)
+```
+
+And here are the embeddings and nearest neighbors:
+
+```{r}
+embed <- read_rds(file.path("models", sprintf("%s-pool.rds", cn)))
+dist_mat <- as.matrix(dist(embed))
+nearest_img <- t(apply(dist_mat, 2, function(v) order(v)[seq(1, 6)]))
+```
+
+```{r}
+start_img <- 3
+show_image(file.path("images", cn, mydata$path[nearest_img[start_img,]]), ncol=3)
+```
+
+And remember, you can redo all of this on your own corpus by: (1) putting your images in a directory
+inside of the images directory and (2) changing the name of the variable `cn` at the top of this notebook.
+
+# Neural network models
+
+So far we have seen several ways of constructing features that describe visual data. We could
+spend many more days describing increasingly complex ways of extracting interesting features
+from our data. This is exactly what the field of computer vision did for decades in order to
+capture higher-complexity features from image data. Around 2006, give or a take a bit, there
+was an explosion in the interest of a certain type of model called a deep convolutational neural
+network (CNN). These are data-oriented methods, that is, they *learn* from tagged data rather
+than by the explicit construction by human experts. 
+
+While there have been great strides in making CNNs usable by non-specialists, there are still
+two hurdles to their application. First, the models take a while to run over a dataset (unless
+you have access to a special kind of hardware called a GPU). Secondly, the software can be a
+bit difficult to get installed. This is particularly true for computers running Windows. For these
+reasons, we have already applied the deep learning models to our datasets. However, the code to
+do this in R is included with the tutorial if you want to adapt these methods to your own data.
+It just requires a little bit more setup (and may be difficult if you are not using Linux or
+MacOS).
+
+
+```{r, message=FALSE}
+judith <- read_csv(file.path("data", "judith.csv"))
+```
+
+The first neural network output that we have is the final layer of a ResNet-50 model. The dataset
+has 25 rows for each input image, and gives the most probably objects contained in the image. Read
+the dataset in with the code below, and make sure that you understand how it is structured:
+
+```{r, message=FALSE}
+resnet <- read_csv(file.path("models", "Judith-resnet50.csv"))
+resnet
+```
+
+What types of objects are most common in the data predictions? We can take the most probable object
+from each photo and count the number of objects of each type:
+
+```{r}
+filter(resnet, rank == 1) %>%
+  count(class_description, sort=TRUE)
+```
+
+Why do you think there are so many websites, book jackets, televisions, and jigsaw puzzels? 
+
+Let's try to see some of the objects that were detected. Here are all of the images that detected
+a military uniform:
+
+```{r}
+index <- which(resnet$rank == 1 & resnet$class_description == "pillow")
+show_image(file.path("images", "judith", resnet$path[index]), ncol=5)
+```
+
+
+How well do these final two object types perform? Where are there mistakes? Can you understand what is
+being misunderstood? Feel free to try some other categories (but be careful not to pick categories with
+too many objects).
+
+In general, the object detection has trouble for two reasons. First, the images are too small. The model
+was trained on higher-resolution images and has trouble with anything other than object types that dominate
+the visual space, such as a suit, or objects with very well-defined shapes such as a bow-tie. The second
+challenge is that that object model only knows about 1000 types of objects and these do not capture the
+diverse set of objects found in the movie posters.
+
+
+# Embeddings
+
+The object detection algorithm sometimes works well with our posters. When it does, it provides a way of
+indexing and searching the collection based on keywords, and perhaps doing an analysis at scale of the
+objects found in movie posters. However, for our usage, the pre-build model really is not good enough 
+to make practical use of the results beyond a few specific applications. We would need to annotate and
+train our own model (outside the scope of the workshop here and very time consuming). There is, however,
+another way to make use of the neural networks in our movie poster dataset through image embeddings.
+
+Let's now read in a matrix object giving the penultimate embedding of an image into a high-dimensional 
+space.
+
+```{r}
+embed <- read_rds(file.path("models", "Judith-pool.rds"))
+```
+
+The dataset has one row for each image and 2048-columns for each dimension of the embedding:
+
+```{r}
+dim(embed)
+```
+
+As with word embeddings, the specific columns of the matrix have no explicit meaning. However, images
+that are *close* to others share some similar features. We can use this to group images together with
+their closest neighbors. We will first build a distance matrix, this has one row and one column for each
+images in the dataset.
+
+```{r}
+dist_mat <- as.matrix(dist(embed))
+dim(dist_mat)
+```
+
+We can look at the first ten rows and columns. Notice that each images is a distance 0 away from
+itself, and that the matrix is symmetric for example, the distance between image 1 and image 2 is
+37.20215; this is the same as the distance between image 2 and image 1).
+
+```{r}
+dist_mat[1:10,1:10]
+```
+
+We will then compute the closest 15 images to each image in our collection:
+
+```{r}
+nearest_img <- t(apply(dist_mat, 2, function(v) order(v)[seq(1, 15)]))
+```
+
+Notice that the closest image to each poster is itself (the first column):
+
+```{r}
+nearest_img[1:10,]
+```
+
+The code below, then, shows the closest images to any starting image that you are interested
+in. Start with image 50, as below (note that the starting image is always the one in the upper-left):
+
+
+```{r}
+start_img <- 50
+show_image(file.path("images", "Judith", judith
+                     $path[nearest_img[start_img,]]), ncol=5)
+```
+
+Then, try out different starting images. Can you (usually) figure out what features the algorithm is
+using to determine that two images are similar? 
+
+How might these similarity scores be used? One example is to build a recommender system that allows
+users looking at one image to find other images with common features. 
+
+# Network analysis of image similarity
+
+As our final usage of neural networks on the poster dataset, let's do a large-scale analysis of
+the image embeddings. This is interesting because image embeddings are most commonly (in DH at
+least) use as a visualization and recommendation technique rather than for analysis of patterns.
+To do this, we are going to build a graph (also known as a network), where each node is an image
+and images are connected to its three closest images:
+
+```{r}
+edges <- rbind(nearest_img[,c(1,2)], nearest_img[,c(1,3)], nearest_img[,c(1,4)])
+edges <- unique(t(apply(edges, 1, sort)))
+
+gr <- graph_from_edgelist(edges, directed=FALSE)
+gr
+```
+
+Now, we can use the graph object to determine the most central images in movie posters:
+
+```{r}
+mydata$centrality <- eigen_centrality(gr)$vector
+
+mydata %>%
+  arrange(desc(centrality)) %>%
+  select(centrality, title)
+```
+
+Any idea why these are the most central images?
+
+```{r}
+top_central <- judith %>%
+  top_n(centrality, n=15)
+
+
+index <- which(mydata$title %in% top_central$title)
+show_image(file.path("images", "Judith", mydata$path[index]), ncol=5)
+```
+
+We can also look at clusters of posters:
+
+```{r}
+set.seed(1) # make sure the results are always the same
+mydata$cluster <- as.integer(membership(cluster_label_prop(gr)))
+lapply(split(mydata$title, mydata$cluster), function(v) v[seq(1, min(length(v), 16))])
+```
+
+Notice any interesting patterns? What if we look at some of the clusters:
+
+```{r}
+cluster <- 30
+index <- which(mydata$cluster == cluster)
+if (length(index) > 15) index <- sample(index, 15)
+
+show_image(file.path("images", "Judith", mydata$path[index]), ncol=5)
+```
+
+Try some other clusters and try to see if there are any interesting patterns.
+
+
+
+
+
+
+
+
+# OTHER
+
+```{r}
+img <- readJPEG(file.path("images", "Judith", mydata$path[1]))
+```
+
+```{r}
+class(img)
+```
+
+An array is a multidimensional grid of numbers. In other words, it is an R object that can store data in more than two dimensions. The `dim` function will tell us how many dimensions
+there are and their lengths:
+
+```{r}
+dim(img)
+```
+
+We see that the poster is 685 pixels high and 745 pixels wide. The number 3 represents the *color channels*
+of the image; it is three here because for each pixel we need three numbers indicating the intensity of the
+red, green, and blue channels, respectively. We can us an extension of our selection logic to look at a small
+part of the array. Here, we have the first 10 rows, columns 40 through 48, and all three color channels:
+
+```{r}
+img[300:350,350:400, 1:3]
+```
+
+All of the numbers are between 0 and 1 (inclusive). It's hard to make much of these numbers directly,
+but this is the way that computers think about digital images. If we want to show an image that has
+already been read into R, use the `show_image_array` function, as we see here:
+
+```{r}
+show_image_array(img)
+```
+
+What does it look like if we only show the pixels from our small selection? Let's
+see:
+
+```{r}
+show_image_array(img[300:350,350:400, 1:3])
+```
+
+Notice that it is mostly shades of blue, except for one corner of brown.
+
+
+# Pixel dataset
+
+So far we have done some exploratory analysis on metadata about a collection of images. Lets
+for a moment turn our single image into a dataset itself. We do this by making each row of the
+dataset correspond to a pixel. Our metadata will be the row and column numbers as well as the
+pixel intensities.
+
+```{r}
+pixels <- tibble(
+  row = as.numeric(row(img[,,1])),
+  col = as.numeric(col(img[,,1])),
+  red = as.numeric(img[,,1]),
+  green = as.numeric(img[,,2]),
+  blue = as.numeric(img[,,3])
+)
+pixels
+```
+
+We can then make a scatter plot of the red and green pixel intensities. What patterns do you
+see? Can you identify any of the clusters of points? (Note: the alpha setting makes the points
+opaque to better show the density of pixels in a region).
+
+```{r}
+ggplot(pixels, aes(red, blue)) +
+  geom_point(alpha=0.1)
+```
+
+Let's try to associate each pixel directly with its color. To do this we add a new metadata column
+called `hex` that contains the hex code (a string representing color) for each pixel.
+
+```{r}
+pixels <- mutate(pixels, hex = rgb(red, green, blue))
+```
+
+Try to open the dataset and see what the hex codes look like. Now, we can build the same plot but
+color the points based on their hex value. The `scale_color_identity` tells R that we already know
+what colors to use and that we do not need it to make a pallet for us.
+
+```{r}
+pixels %>%
+  ggplot(aes(red, green)) +
+    geom_point(aes(color = hex), alpha=0.1) +
+    scale_color_identity()
+```
+
+Notice that pixels in the same spot do not always have the same color because they may have different
+amounts of green in them. Here is a similar plot for red versus blue:
+
+```{r}
+pixels %>%
+  ggplot(aes(red, blue)) +
+    geom_point(aes(color = hex), alpha=0.1) +
+    scale_color_identity()
+```
+
+Again, points at the same location may have different colors because of the amount of blue in them.
+What do you think about these three plots?
+
+# Hue, Saturation, and Value
+
+It is possible to describe the color of an image by describing the amount that red, green, and blue
+lights would need to be turned on in order to reproduce the observed color. This is a useful format 
+for digital displays, but as we have seen not particularly useful for analysis. A high amount of red
+may mean that a pixel is very red, but it may also mean that a pixel is white. It is useful to use 
+a different set of three numbers that describe a pixel's color in a different way.
+
+The color model tht we will use is called hue, saturation, and value. These are all also given as
+numbers between 0 and 1, but represent a pixel's color in a way that more closely maps the language
+that we use to describe colors. Value tells whether the pixel is dark (0) or light (1). Saturation
+tells whether the pixel is pale (0 is a grey) or rich (1). Hue tells where the pixel would land on
+a rainbow (0 is red and 1 is purple). Let's add these values to our dataset:
+
+```{r}
+hsv <- rgb2hsv(pixels$red, pixels$green, pixels$blue, maxColorValue = 1)
+pixels$hue <- hsv[1,]
+pixels$saturation <- hsv[2,]
+pixels$value <- hsv[3,]
+pixels
+```
+
+Note the the hex value is unchanged. The HSV model describes the same color as before, but does so
+using a different parameterisation of the color space. Let's look at a plot of hue and saturation
+to understand what these numbers mean. We will restrict ourselves to points with a low value because
+these are appear similar to black:
+
+```{r}
+pixels %>%
+  filter(value > 0.3) %>%
+  ggplot(aes(hue, saturation)) +
+    geom_point(aes(color = hex)) +
+    scale_color_identity()
+```
+
+How does this compare to the the plots above? Here is a similar plot with hue and value. We
+again filter, this time on saturation, to make sure that points are not too close to white:
+
+```{r}
+pixels %>%
+  filter(saturation > 0.3) %>%
+  ggplot(aes(hue, value)) +
+    geom_point(aes(color = hex)) +
+    scale_color_identity()
+```
+
+We can also see the distribution of value, which shows in general how light and dark the
+image is. Notice that there are a lot of pixels with a value that is very close to 1.
+
+```{r}
+ggplot(pixels, aes(value)) +
+  geom_histogram(color="black", fill="white", bins=30)
+```
+
+And a similar plot of saturation shows that there are many pixels that are almost completely
+saturated (this is a common in a cartoon):
+
+```{r}
+ggplot(pixels, aes(saturation)) +
+  geom_histogram(color="black", fill="white", bins=30)
+```
+
+Finally, filtering out low values and saturations because they are mostly black/grey/white, 
+we see the distribution of hues:
+
+```{r}
+pixels %>%
+  filter(value > 0.3, saturation > 0.3) %>%
+  ggplot(aes(hue)) +
+    geom_histogram(color="black", fill="white", bins=30)
+```
+
+It is a bit hard to interepret exactly what each of these hues represents. Let's add a bit more
+code to color the bars as the hue that they represent:
+
+```{r}
+pixels %>%
+  filter(value > 0.3, saturation > 0.3) %>%
+  mutate(hval = cut(hue, breaks=seq(0, 1, length.out=30), labels=FALSE, include.lowest = TRUE)) %>%
+  count(hval) %>%
+  mutate(hhex = hsv(h=hval/30, 1, 1)) %>%
+  ggplot(aes(hval/30, n)) +
+    geom_col(aes(fill=hhex), color="black") +
+    scale_fill_identity() +
+    xlab("Hue") + ylab("Number of Pixels")
+```
+
+Can you now see the most common colors? How do these relate to the original image?
+
+```{r}
+show_image_array(img)
+```
