@@ -63,7 +63,6 @@ cn <- "Judith"
 The first thing that we need to do is find all of the images in the test directory. Our
 test dataset contains images of judith :
 
-
 ```{r}
 head(dir(file.path("images", cn)))
 ```
@@ -157,6 +156,11 @@ mydata
 ```{r}
 mydata$century
 ```
+```{r}
+count(mydata, country, sort=TRUE)
+```
+
+
 
 ```{r, warning=FALSE}
 ggplot(mydata, aes(country, type)) +
@@ -164,6 +168,7 @@ ggplot(mydata, aes(country, type)) +
 ```
 
 # GENERAL
+
 
 ```{r}
 count(mydata, country, sort=TRUE)
@@ -190,6 +195,16 @@ ggplot(mydata, aes(title, fill = title)) +
   coord_flip()+
   ggtitle("Distribution of manuscripts by text")
 ```
+
+```{r}
+count(mydata, Intended_reader, sort=TRUE)
+ggplot(mydata, aes(Intended_reader, fill = Intended_reader)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 0.25, colour = "black") +
+  coord_flip()+
+  ggtitle("Distribution of manuscripts by type of text")
+```
+
 
 
 
@@ -1065,7 +1080,7 @@ pl <- pl + geom_bar(stat="identity")
 pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
                      position=position_stack(vjust=0.5), colour="black", size = 3)
 pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
-pl <- pl  + ggtitle("Holofernes naked by century")
+pl <- pl  + ggtitle("Intended reader by century")
 pl
 ggplotly(pl)
 
@@ -1080,7 +1095,7 @@ pl <- pl + geom_bar(stat="identity")
 pl <- pl + geom_text(aes(label=paste0(sprintf("%1.1f", percent*100),"%")),
                      position=position_stack(vjust=0.5), colour="black", size = 3)
 pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ))
-pl <- pl  + ggtitle("Holofernes naked by century")
+pl <- pl  + ggtitle("Presence of blood by intended reader")
 pl
 ggplotly(pl)
 
